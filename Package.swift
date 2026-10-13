@@ -14,8 +14,9 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .library(name: "AxolotyDebug", targets: ["AxolotyDebug"]),
-        // The low-level process launch and signal-disposition shim is shared
-        // with the Core build harness, which still consumes this product.
+        // The standalone CLI that owns the serve mqtt|mcp|dev entry points.
+        .executable(name: "axoloty-debug", targets: ["AxolotyDebugCLI"]),
+        // The low-level process launch and signal-disposition shim.
         .library(name: "AxolotyProcessLauncher", targets: ["AxolotyProcessLauncher"]),
     ],
     targets: [
@@ -28,6 +29,11 @@ let package = Package(
             name: "AxolotyDebug",
             dependencies: ["AxolotyProcessLauncher"],
             path: "Sources/AxolotyDebug"
+        ),
+        .executableTarget(
+            name: "AxolotyDebugCLI",
+            dependencies: ["AxolotyDebug"],
+            path: "Sources/axoloty-debug"
         ),
         .testTarget(
             name: "AxolotyDebugTests",
