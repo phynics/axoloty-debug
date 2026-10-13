@@ -1,0 +1,31 @@
+# Copyright (c) 2026 Atakan DULKER. Licensed under the MIT License.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    container: swift:6.4
+    steps:
+      # The package depends on the published Axoloty library through the
+      # sibling path ../axoloty, so both checkouts must be siblings here.
+      - name: Checkout axoloty-debug
+        uses: actions/checkout@v4
+        with:
+          path: axoloty-debug
+      - name: Checkout Axoloty Core
+        uses: actions/checkout@v4
+        with:
+          repository: phynics/axoloty
+          path: axoloty
+      - name: Build and test
+        working-directory: axoloty-debug
+        run: swift test -Xswiftc -warnings-as-errors

@@ -61,7 +61,15 @@ swift build
 swift test
 ```
 
-The package has no external dependencies, so both run offline.
+It depends on the published `Axoloty` library through the sibling path
+`../axoloty`, so a checkout of `phynics/axoloty` must sit next to this one.
+CI checks out both as siblings.
+
+## Releases
+
+`VERSION` is the single source of truth. To release, set `VERSION` to the new
+semantic version, tag `vX.Y.Z`, and push the tag. The release workflow verifies
+that `VERSION` matches the tag before creating the GitHub release.
 
 ## Source conventions
 
