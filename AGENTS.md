@@ -9,7 +9,9 @@ and debug tooling behind the Core build harness command `axoloty-tool serve`.
 portable protocol, runtime, Coaty models, and the build/test orchestration
 (`axoloty-tool`, `AxolotyTooling`). Its
 [`AGENTS.md`](https://github.com/phynics/axoloty/blob/main/AGENTS.md) governs
-changes there, including how Core consumes this package.
+changes there. Core's `Tools` package is a library-free harness and does not
+link this package; the Core container's `serve-*` targets invoke this
+repository's `axoloty-debug` binary.
 
 [`phynics/axoloty-embedded`](https://github.com/phynics/axoloty-embedded) owns
 concrete firmware products and device qualification.
@@ -18,7 +20,8 @@ concrete firmware products and device qualification.
 
 This repository owns:
 
-- the `serve mqtt|mcp|dev` command surface and its parser,
+- the `axoloty-debug` CLI and the `serve mqtt|mcp|dev` command surface and its
+  parser,
 - the managed Mosquitto and `axoloty-mcp` service runners and the development
   stack supervisor,
 - the process-launch and signal-disposition shim (`AxolotyProcessLauncher`),
@@ -28,9 +31,9 @@ It does not own build, test, release, or repository-authority policy. Nothing
 here may read the Axoloty checkout layout, a test manifest, or a package list.
 It reaches the broker and the `axoloty-mcp` product only.
 
-Core's `Tools` package consumes this repository as a sibling path dependency
-(`../axoloty-debug`). Keep the manifest product names (`AxolotyDebug`,
-`AxolotyProcessLauncher`) stable so that dependency keeps resolving.
+Core does not link this package, and this package must not depend on Core's
+build harness. Keep the `axoloty-debug` executable name stable: the Core
+container's `serve-*` targets invoke it.
 
 ## Invariants
 
