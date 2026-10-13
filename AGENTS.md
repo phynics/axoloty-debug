@@ -24,21 +24,26 @@ This repository owns:
   parser,
 - the managed Mosquitto and `axoloty-mcp` service runners and the development
   stack supervisor,
+- the object inspector (`axoloty-inspect`, `AxolotyInspectorCore`,
+  `AxolotyInspectorRuntime`) and the MCP server (`axoloty-mcp`, `AxolotyMCP`),
+- the package version resolver (`AxolotyVersion`),
 - the process-launch and signal-disposition shim (`AxolotyProcessLauncher`),
 - the `MCPPathPolicy` helper.
 
 It does not own build, test, release, or repository-authority policy. Nothing
 here may read the Axoloty checkout layout, a test manifest, or a package list.
-It reaches the broker and the `axoloty-mcp` product only.
+It reaches a live runtime through the public Axoloty API only.
 
-Core does not link this package, and this package must not depend on Core's
-build harness. Keep the `axoloty-debug` executable name stable: the Core
-container's `serve-*` targets invoke it.
+This package depends on the published `Axoloty` library (a local `../axoloty`
+sibling during development). Core does not link this package, and this package
+must not depend on Core's build harness (`Tools`). Keep the `axoloty-debug`,
+`axoloty-inspect`, and `axoloty-mcp` executable names stable: the Core
+container's `serve-*` targets invoke `axoloty-debug`.
 
 ## Invariants
 
-- No dependency on Axoloty's packages, source tree, or `.build`. The only
-  inputs are the child executable paths and the environment.
+- The only Axoloty input is the public library. Never read Core's source tree,
+  `Tools`, a test manifest, its `.build`, or its checkout layout.
 - The embedding process owns signals. Service runners take `installSignalHandler`
   and an `AxolotyDebugCancellation`; they never install a handler the caller did
   not ask for.
