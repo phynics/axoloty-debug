@@ -195,8 +195,7 @@ axoloty-inspect (executable)
 
 `AxolotyInspectorCore` has no product-runtime dependencies. The CLI
 target depends on `Axoloty` for broker connectivity through
-`AxolotyRuntime` and `MQTTBinding`. `AxolotyTooling` is unaffected — its
-dependency closure does not change.
+`AxolotyRuntime` and `MQTTBinding`.
 
 The inspector does not instantiate MQTTNIO directly. It builds an immutable
 runtime definition and uses the runtime-owned event streams for observation.
