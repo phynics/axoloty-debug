@@ -15,20 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     container: swift:6.4-jammy
     steps:
-      # The package depends on the published Axoloty library through the
-      # sibling path ../axoloty, so both checkouts must be siblings here.
       - name: Checkout axoloty-debug
         uses: actions/checkout@v4
-        with:
-          path: axoloty-debug
-      - name: Checkout Axoloty Core
-        uses: actions/checkout@v4
-        with:
-          repository: phynics/axoloty
-          path: axoloty
       # --no-parallel avoids the CPU oversubscription that can push the
-      # MCP lifecycle stop deadline (axoloty issue #827) over its bound on
-      # shared runners.
+      # MCP lifecycle stop deadline over its bound on shared runners.
       - name: Build and test
-        working-directory: axoloty-debug
         run: swift test --no-parallel -Xswiftc -warnings-as-errors

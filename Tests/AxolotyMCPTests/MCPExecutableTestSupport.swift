@@ -70,13 +70,43 @@ internal func runMCPExecutable(
     )
 }
 
+private func locateMCPExecutable() -> URL? {
+    if let configured = ProcessInfo.processInfo.environment["AXOLOTY_MCP_EXECUTABLE"],
+       FileManager.default.isExecutableFile(atPath: configured) {
+        return URL(fileURLWithPath: configured)
+    }
+    var candidateDirectory = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
+    var executable = candidateDirectory.appendingPathComponent("axoloty-mcp")
+    while !FileManager.default.isExecutableFile(atPath: executable.path), candidateDirectory.pathComponents.count > 1 {
+        candidateDirectory.deleteLastPathComponent()
+        executable = candidateDirectory.appendingPathComponent("axoloty-mcp")
+        if candidateDirectory.lastPathComponent == "Products" || candidateDirectory.lastPathComponent == ".build" {
+            break
+        }
+    }
+    if FileManager.default.isExecutableFile(atPath: executable.path) {
+        return executable
+    }
+    for fallback in [
+        ".build/debug/axoloty-mcp",
+        ".build/x86_64-unknown-linux-gnu/debug/axoloty-mcp",
+        ".build/arm64-apple-macosx/debug/axoloty-mcp",
+    ] {
+        if FileManager.default.isExecutableFile(atPath: fallback) {
+            return URL(fileURLWithPath: fallback)
+        }
+    }
+    return nil
+}
+
 private func makeMCPExecutableProcess(
     arguments: [String],
     environment overrides: [String: String] = [:]
 ) throws -> MCPExecutableInvocation {
-    let productsDirectory = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
-    let executable = productsDirectory.appendingPathComponent("axoloty-mcp")
-    try #require(FileManager.default.isExecutableFile(atPath: executable.path))
+    guard let executable = locateMCPExecutable() else {
+        Issue.record("Could not locate executable axoloty-mcp")
+        throw CocoaError(.fileNoSuchFile)
+    }
 
     let process = Process()
     let standardOutput = Pipe()
