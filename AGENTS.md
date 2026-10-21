@@ -34,11 +34,13 @@ It does not own build, test, release, or repository-authority policy. Nothing
 here may read the Axoloty checkout layout, a test manifest, or a package list.
 It reaches a live runtime through the public Axoloty API only.
 
-This package depends on the published `Axoloty` library (a local `../axoloty`
-sibling during development). Core does not link this package, and this package
-must not depend on Core's build harness (`Tools`). Keep the `axoloty-debug`,
-`axoloty-inspect`, and `axoloty-mcp` executable names stable: the Core
-container's `serve-*` targets invoke `axoloty-debug`.
+This package depends on the versioned Core release repository
+(`https://github.com/phynics/axoloty.git`, `0.9.x` from `0.9.0`). For local Core development,
+the environment variable `AXOLOTY_LOCAL_CORE_PATH` (or `AXOLOTY_CORE_PATH`) overrides
+the package dependency to point to a local directory checkout. Core does not link
+this package, and this package must not depend on Core's build harness (`Tools`).
+Keep the `axoloty-debug`, `axoloty-inspect`, and `axoloty-mcp` executable names stable:
+the Core container's `serve-*` targets invoke `axoloty-debug`.
 
 ## Invariants
 
@@ -61,9 +63,20 @@ swift build
 swift test
 ```
 
-It depends on the published `Axoloty` library through the sibling path
-`../axoloty`, so a checkout of `phynics/axoloty` must sit next to this one.
-CI checks out both as siblings.
+By default, Swift Package Manager resolves `Axoloty` from `https://github.com/phynics/axoloty.git` (0.9.x, from `0.9.0`).
+To develop against a local Core checkout, set `AXOLOTY_LOCAL_CORE_PATH`:
+
+```sh
+AXOLOTY_LOCAL_CORE_PATH=/path/to/axoloty swift build
+AXOLOTY_LOCAL_CORE_PATH=/path/to/axoloty swift test
+```
+
+CI builds and tests `axoloty-debug` standalone on Linux without requiring a sibling checkout.
+
+## Platform support
+
+- **Linux (Ubuntu / Jammy, Swift 6.4+):** Validated. Canonical target platform running in automated CI.
+- **macOS:** Best-effort. Supported for local development on macOS 26+ / Darwin. CI runs on Linux only.
 
 ## Releases
 

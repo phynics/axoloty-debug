@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Atakan DULKER. Licensed under the MIT License.
 
+import AxolotyDebugTestSupport
 import Foundation
 import Testing
 
@@ -74,9 +75,10 @@ private func makeMCPExecutableProcess(
     arguments: [String],
     environment overrides: [String: String] = [:]
 ) throws -> MCPExecutableInvocation {
-    let productsDirectory = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
-    let executable = productsDirectory.appendingPathComponent("axoloty-mcp")
-    try #require(FileManager.default.isExecutableFile(atPath: executable.path))
+    guard let executable = MCPExecutableLocation.locate() else {
+        Issue.record("Could not locate executable axoloty-mcp")
+        throw CocoaError(.fileNoSuchFile)
+    }
 
     let process = Process()
     let standardOutput = Pipe()

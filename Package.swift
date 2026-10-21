@@ -1,6 +1,7 @@
 // swift-tools-version: 6.4
 // Copyright (c) 2026 Atakan DULKER. Licensed under the MIT License.
 
+import class Foundation.ProcessInfo
 import PackageDescription
 
 /// The runtime and debug tooling for the Axoloty stack.
@@ -9,6 +10,21 @@ import PackageDescription
 /// `axoloty-debug` serve supervisor, the object inspector, and the MCP server.
 /// It depends on the published `Axoloty` library and reads no build or
 /// repository policy.
+let coreDependency: Package.Dependency = {
+    let environment = ProcessInfo.processInfo.environment
+    let localPaths = [
+        environment["AXOLOTY_LOCAL_CORE_PATH"],
+        environment["AXOLOTY_CORE_PATH"],
+    ]
+    if let localPath = localPaths.compactMap({ $0 }).first(where: { !$0.isEmpty }) {
+        return .package(name: "Axoloty", path: localPath)
+    }
+    return .package(
+        url: "https://github.com/phynics/axoloty.git",
+        .upToNextMinor(from: "0.9.0")
+    )
+}()
+
 let package = Package(
     name: "AxolotyDebug",
     platforms: [.macOS("26.0")],
@@ -20,9 +36,9 @@ let package = Package(
         .library(name: "AxolotyProcessLauncher", targets: ["AxolotyProcessLauncher"]),
     ],
     dependencies: [
-        // Local sibling checkout during development. A release pins a versioned
-        // URL; the source tree is the same.
-        .package(name: "Axoloty", path: "../axoloty"),
+        // Versioned Core URL dependency in released configuration, with local
+        // development override via AXOLOTY_LOCAL_CORE_PATH / AXOLOTY_CORE_PATH.
+        coreDependency,
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", exact: "0.12.1"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.14.0"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.101.2"),
@@ -93,9 +109,13 @@ let package = Package(
             ],
             path: "Sources/axoloty-mcp"
         ),
+        .target(
+            name: "AxolotyDebugTestSupport",
+            path: "Tests/AxolotyDebugTestSupport"
+        ),
         .testTarget(
             name: "AxolotyDebugTests",
-            dependencies: ["AxolotyDebug"],
+            dependencies: ["AxolotyDebug", "AxolotyDebugTestSupport"],
             path: "Tests/AxolotyDebugTests"
         ),
         .testTarget(
@@ -127,6 +147,7 @@ let package = Package(
                 "AxolotyMCP",
                 "AxolotyMCPServer",
                 "AxolotyDebug",
+                "AxolotyDebugTestSupport",
             ],
             path: "Tests/AxolotyMCPTests"
         ),
