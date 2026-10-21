@@ -33,6 +33,7 @@ let package = Package(
         .executable(name: "axoloty-inspect", targets: ["AxolotyInspectorCLI"]),
         .executable(name: "axoloty-mcp", targets: ["AxolotyMCPServer"]),
         .library(name: "AxolotyDebug", targets: ["AxolotyDebug"]),
+        .library(name: "AxolotyDiagnostics", targets: ["AxolotyDiagnostics"]),
         .library(name: "AxolotyProcessLauncher", targets: ["AxolotyProcessLauncher"]),
     ],
     dependencies: [
@@ -59,6 +60,10 @@ let package = Package(
             name: "AxolotyDebugCLI",
             dependencies: ["AxolotyDebug"],
             path: "Sources/axoloty-debug"
+        ),
+        .target(
+            name: "AxolotyDiagnostics",
+            path: "Sources/AxolotyDiagnostics"
         ),
         .target(
             name: "AxolotyInspectorCore",
@@ -117,6 +122,11 @@ let package = Package(
             name: "AxolotyDebugTests",
             dependencies: ["AxolotyDebug", "AxolotyDebugTestSupport"],
             path: "Tests/AxolotyDebugTests"
+        ),
+        .testTarget(
+            name: "AxolotyDiagnosticsTests",
+            dependencies: ["AxolotyDiagnostics"],
+            path: "Tests/AxolotyDiagnosticsTests"
         ),
         .testTarget(
             name: "AxolotyInspectorCoreTests",
