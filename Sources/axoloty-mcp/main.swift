@@ -21,6 +21,10 @@ Options:
   --broker-port PORT      MQTT broker port (default: 1883).
   --namespace NAMESPACE   Coaty namespace (default: -).
   --connect-timeout TIME  Broker readiness timeout (default: 10s).
+  --enable-controls       Allow active tools such as axoloty_discover_objects
+                          (default: read-only).
+  --include-payloads      Include raw object payloads and private data
+                          (default: redacted).
   --help                  Show this help.
 """
 
@@ -38,6 +42,8 @@ var listenHost = "127.0.0.1"
 var listenPortRaw = ProcessInfo.processInfo.environment["AXOLOTY_MCP_PORT"] ?? "8765"
 var mcpPath = "/mcp"
 var connectTimeout: Duration = .seconds(10)
+var enableControls = false
+var includePayloads = false
 
 var i = 0
 while i < args.count {
@@ -102,6 +108,12 @@ while i < args.count {
         }
         mcpPath = args[i + 1]
         i += 2
+    case "--enable-controls":
+        enableControls = true
+        i += 1
+    case "--include-payloads":
+        includePayloads = true
+        i += 1
     case let argument where argument.hasPrefix("--path="):
         mcpPath = String(argument.dropFirst("--path=".count))
         i += 1
@@ -138,7 +150,8 @@ let exitCode = await runMCPServer(
     listenHost: listenHost,
     listenPort: listenPort,
     path: mcpPath,
-    connectTimeout: connectTimeout
+    connectTimeout: connectTimeout,
+    accessPolicy: MCPAccessPolicy(controlsEnabled: enableControls, includePayloads: includePayloads)
 )
 Foundation.exit(exitCode)
 
@@ -151,7 +164,8 @@ func runMCPServer(
     listenHost: String,
     listenPort: UInt16,
     path: String,
-    connectTimeout: Duration
+    connectTimeout: Duration,
+    accessPolicy: MCPAccessPolicy
 ) async -> Int32 {
     do {
         let server = try AxolotyMCPServer(
@@ -159,6 +173,7 @@ func runMCPServer(
             port: port,
             namespace: namespace,
             connectTimeout: connectTimeout,
+            accessPolicy: accessPolicy,
             transport: MQTTInspectorTransport.factory
         )
         switch transport {

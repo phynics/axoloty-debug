@@ -28,6 +28,7 @@ public final class AxolotyMCPServer {
     private let session: InspectorDiscovering
     private let responseEncoder: ResponseEncoder
     private let encodingFailureLogger: EncodingFailureLogger
+    private let accessPolicy: MCPAccessPolicy
     private var httpServer: MCPHTTPServer?
     private var catalogueStartTask: Task<Void, Never>? = nil
 
@@ -129,6 +130,8 @@ public final class AxolotyMCPServer {
     ///   - port: MQTT broker port.
     ///   - namespace: Coaty namespace.
     ///   - connectTimeout: Broker readiness timeout.
+    ///   - accessPolicy: Which tools and object data clients may use. Defaults
+    ///     to local, read-only, and redacting.
     ///   - makeTransport: Builds the session transport. Supplied by the
     ///     executable so this target names no carrier.
     /// - Throws: ``InspectorError`` if the underlying inspector session
@@ -138,6 +141,7 @@ public final class AxolotyMCPServer {
         port: UInt16,
         namespace: String,
         connectTimeout: Duration = .seconds(10),
+        accessPolicy: MCPAccessPolicy = .localReadOnly,
         transport makeTransport: AxolotyInspectorSession.TransportFactory
     ) throws {
         let connectionConfig = Self.makeConnectionConfiguration(
@@ -151,6 +155,7 @@ public final class AxolotyMCPServer {
         self.catalogueService = InspectorCatalogueService(session: session, namespace: namespace)
         self.responseEncoder = ResponseEncoder()
         self.encodingFailureLogger = Self.logEncodingFailure
+        self.accessPolicy = accessPolicy
         self.server = Server(
             name: "axoloty-mcp",
             version: InspectorArgumentParser.version,
@@ -179,12 +184,14 @@ public final class AxolotyMCPServer {
         session: InspectorSession,
         namespace: String,
         responseEncoder: ResponseEncoder = ResponseEncoder(),
-        encodingFailureLogger: @escaping EncodingFailureLogger = AxolotyMCPServer.logEncodingFailure
+        encodingFailureLogger: @escaping EncodingFailureLogger = AxolotyMCPServer.logEncodingFailure,
+        accessPolicy: MCPAccessPolicy = .localReadOnly
     ) {
         self.session = session
         self.catalogueService = InspectorCatalogueService(session: session, namespace: namespace)
         self.responseEncoder = responseEncoder
         self.encodingFailureLogger = encodingFailureLogger
+        self.accessPolicy = accessPolicy
         self.server = Server(
             name: "axoloty-mcp",
             version: InspectorArgumentParser.version,
@@ -275,12 +282,19 @@ public final class AxolotyMCPServer {
         let service = catalogueService
 
         // List tools
+        let policy = accessPolicy
         await server.withMethodHandler(ListTools.self) { _ in
-            return .init(tools: Self.objectInputSchemaTools)
+            return .init(tools: Self.objectInputSchemaTools.filter { policy.allows(tool: $0.name) })
         }
 
         // Call tool
         await server.withMethodHandler(CallTool.self) { [self] params in
+            guard policy.allows(tool: params.name) else {
+                return .init(
+                    content: [.text("Tool not available under the current access policy: \(params.name)")],
+                    isError: true
+                )
+            }
             switch params.name {
             case "axoloty_list_objects":
                 return await self.handleListObjects(params.arguments, service: service)
@@ -314,7 +328,7 @@ public final class AxolotyMCPServer {
                 return .init(contents: [.text(json, uri: params.uri, mimeType: "application/json")])
             case "axoloty://catalogue":
                 let snapshot = await service.store.snapshot(filter: ObjectCatalogueFilter())
-                let json = try Self.encodeSnapshot(snapshot)
+                let json = try Self.encodeSnapshot(policy.redact(snapshot))
                 return .init(contents: [.text(json, uri: params.uri, mimeType: "application/json")])
             default:
                 throw MCPError.invalidParams("Unknown resource URI: \(params.uri)")
@@ -326,7 +340,7 @@ public final class AxolotyMCPServer {
 
     private func handleListObjects(_ args: [String: Value]?, service: InspectorCatalogueService) async -> CallTool.Result {
         let filter = Self.parseFilter(args)
-        let snapshot = await service.store.snapshot(filter: filter)
+        let snapshot = accessPolicy.redact(await service.store.snapshot(filter: filter))
         do {
             let json = try responseEncoder.snapshot(snapshot)
             return .init(content: [.text(json)], isError: false)
@@ -345,7 +359,7 @@ public final class AxolotyMCPServer {
         }
         if let object = await service.store.object(id: objectId) {
             do {
-                let json = try responseEncoder.object(object)
+                let json = try responseEncoder.object(accessPolicy.redact(object))
                 return .init(content: [.text(json)], isError: false)
             } catch {
                 return Self.encodingFailureResult(
