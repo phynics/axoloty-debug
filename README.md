@@ -21,6 +21,16 @@ swift build
 swift test
 ```
 
+### Prebuilt Linux binaries
+
+Each `vX.Y.Z` release attaches `axoloty-debug-vX.Y.Z-linux-{x86_64,aarch64}.tar.gz`
+(with a `.sha256` file) containing `axoloty-debug`, `axoloty-inspect`, and `axoloty-mcp`:
+
+```sh
+gh release download vX.Y.Z -R phynics/axoloty-debug -p 'axoloty-debug-*-linux-x86_64.tar.gz*'
+sha256sum -c axoloty-debug-vX.Y.Z-linux-x86_64.tar.gz.sha256
+```
+
 ## Dependency Configuration & Local Core Overrides
 
 By default, `axoloty-debug` resolves the versioned Axoloty Core dependency from GitHub:
