@@ -31,6 +31,15 @@ gh release download vX.Y.Z -R phynics/axoloty-debug -p 'axoloty-debug-*-linux-x8
 sha256sum -c axoloty-debug-vX.Y.Z-linux-x86_64.tar.gz.sha256
 ```
 
+### Container image
+
+Releases also publish `ghcr.io/phynics/axoloty-debug:<version>` (linux/amd64 and
+linux/arm64, includes Mosquitto). Other images can take the binaries directly:
+
+```dockerfile
+COPY --from=ghcr.io/phynics/axoloty-debug:X.Y.Z /usr/local/bin/axoloty-debug /usr/local/bin/
+```
+
 ## Dependency Configuration & Local Core Overrides
 
 By default, `axoloty-debug` resolves the versioned Axoloty Core dependency from GitHub:
