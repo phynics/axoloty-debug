@@ -11,11 +11,18 @@ import PackageDescription
 /// It depends on the published `Axoloty` library and reads no build or
 /// repository policy.
 let coreDependency: Package.Dependency = {
-    if let localPath = ProcessInfo.processInfo.environment["AXOLOTY_LOCAL_CORE_PATH"] ?? ProcessInfo.processInfo.environment["AXOLOTY_CORE_PATH"],
-       !localPath.isEmpty {
+    let environment = ProcessInfo.processInfo.environment
+    let localPaths = [
+        environment["AXOLOTY_LOCAL_CORE_PATH"],
+        environment["AXOLOTY_CORE_PATH"],
+    ]
+    if let localPath = localPaths.compactMap({ $0 }).first(where: { !$0.isEmpty }) {
         return .package(name: "Axoloty", path: localPath)
     }
-    return .package(url: "https://github.com/phynics/axoloty.git", from: "0.9.0")
+    return .package(
+        url: "https://github.com/phynics/axoloty.git",
+        .upToNextMinor(from: "0.9.0")
+    )
 }()
 
 let package = Package(
@@ -102,9 +109,13 @@ let package = Package(
             ],
             path: "Sources/axoloty-mcp"
         ),
+        .target(
+            name: "AxolotyDebugTestSupport",
+            path: "Tests/AxolotyDebugTestSupport"
+        ),
         .testTarget(
             name: "AxolotyDebugTests",
-            dependencies: ["AxolotyDebug"],
+            dependencies: ["AxolotyDebug", "AxolotyDebugTestSupport"],
             path: "Tests/AxolotyDebugTests"
         ),
         .testTarget(
@@ -136,6 +147,7 @@ let package = Package(
                 "AxolotyMCP",
                 "AxolotyMCPServer",
                 "AxolotyDebug",
+                "AxolotyDebugTestSupport",
             ],
             path: "Tests/AxolotyMCPTests"
         ),

@@ -13,7 +13,7 @@ Runtime and debug tooling for the Axoloty distributed robotics and IoT framework
 ## Installation & Building
 
 Requirements:
-- Swift 6.0 or later
+- Swift 6.4 or later
 - Optional for `axoloty-debug serve mqtt|dev`: `mosquitto` broker binary
 
 ```bash
@@ -24,7 +24,7 @@ swift test
 ## Dependency Configuration & Local Core Overrides
 
 By default, `axoloty-debug` resolves the versioned Axoloty Core dependency from GitHub:
-- `https://github.com/phynics/axoloty.git` (from `0.9.0`)
+- `https://github.com/phynics/axoloty.git` (0.9.x, from `0.9.0`)
 
 ### Local Development Override
 
@@ -42,8 +42,8 @@ When unset or empty, SPM resolves the tagged release from GitHub without requiri
 
 In accordance with the Axoloty host platform matrix:
 
-- **Linux (Ubuntu 22.04 LTS / Jammy, container `swift:6.4-jammy`):** **Validated**. Canonical target platform validated by automated CI on every push and pull request.
-- **macOS:** **Best-effort**. Maintained and supported for local developer workflows on macOS 14+ (Apple Silicon and Intel). Automated CI runs on Linux.
+- **Linux (Ubuntu 22.04 LTS / Jammy, container `swift:6.4-jammy`):** **Validated**. Canonical target platform validated by automated CI on pushes to `main` and on pull requests.
+- **macOS:** **Best-effort**. Maintained for local developer workflows on macOS 26+ (Apple Silicon and Intel). Automated CI runs on Linux only.
 
 ## CI & Automated Testing
 

@@ -17,7 +17,9 @@ jobs:
     steps:
       - name: Checkout axoloty-debug
         uses: actions/checkout@v4
+      - name: Build all products
+        run: swift build -Xswiftc -warnings-as-errors
       # --no-parallel avoids the CPU oversubscription that can push the
       # MCP lifecycle stop deadline over its bound on shared runners.
-      - name: Build and test
+      - name: Run tests
         run: swift test --no-parallel -Xswiftc -warnings-as-errors

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Atakan DULKER. Licensed under the MIT License.
 
 @testable import AxolotyDebug
+import AxolotyDebugTestSupport
 import Foundation
 import Testing
 #if canImport(Glibc)
@@ -670,31 +671,6 @@ func urlAuthorityHostBracketsIPv6Literals() {
     #expect(urlAuthorityHost("localhost") == "localhost")
 }
 
-/// Locates a runnable ``axoloty-mcp`` binary for integration testing.
-private func mcpExecutablePath() -> String? {
-    if let configured = ProcessInfo.processInfo.environment["AXOLOTY_MCP_EXECUTABLE"],
-       FileManager.default.isExecutableFile(atPath: configured) {
-        return configured
-    }
-    var candidates: [String] = []
-    if let argvZero = CommandLine.arguments.first {
-        candidates.append(
-            URL(fileURLWithPath: argvZero)
-                .deletingLastPathComponent()
-                .appendingPathComponent("axoloty-mcp")
-                .path
-        )
-    }
-    candidates.append(contentsOf: [
-        ".build/debug/axoloty-mcp",
-        ".build/x86_64-unknown-linux-gnu/debug/axoloty-mcp",
-    ])
-    // The image path is a swift-run launcher, not a compiled executable. Using
-    // it from this SwiftPM test would contend with the parent test process for
-    // the same build directory, so the test only selects a built product.
-    return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
-}
-
 /// Captures the exit code reported by a background runner thread.
 private final class ExitCodeBox: @unchecked Sendable {
     private let lock = NSLock()
@@ -721,7 +697,7 @@ private func developmentServiceEndToEndIsEnabled(environment: [String: String]) 
     "Set AXOLOTY_RUN_DEV_SERVICE_E2E=1 to run local Mosquitto and MCP evidence."
 ))
 func devServiceEndToEndWithDynamicPorts() throws {
-    guard let mcpPath = mcpExecutablePath() else { return }
+    guard let mcpPath = MCPExecutableLocation.locate()?.path else { return }
     guard FileManager.default.isExecutableFile(atPath: "/usr/sbin/mosquitto") else { return }
 
     let mqttPort = try freePort()
