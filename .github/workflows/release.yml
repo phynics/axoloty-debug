@@ -9,14 +9,12 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Create release
+  verify:
+    name: Verify version
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: Verify VERSION matches the tag
         run: |
           version=$(tr -d '[:space:]' < VERSION)
@@ -24,7 +22,49 @@ jobs:
             echo "tag $GITHUB_REF_NAME does not match VERSION $version" >&2
             exit 1
           fi
+
+  build:
+    name: Build linux-${{ matrix.arch }}
+    needs: verify
+    runs-on: ${{ matrix.runner }}
+    container: swift:6.4-jammy
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build release products
+        run: swift build -c release --static-swift-stdlib
+      - name: Package binaries
+        run: |
+          name="axoloty-debug-${GITHUB_REF_NAME}-linux-${{ matrix.arch }}"
+          bin=$(swift build -c release --show-bin-path)
+          mkdir -p "dist/$name"
+          cp "$bin/axoloty-debug" "$bin/axoloty-inspect" "$bin/axoloty-mcp" "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/*.tar.gz*
+
+  release:
+    name: Create release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
