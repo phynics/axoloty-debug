@@ -21,7 +21,7 @@ let coreDependency: Package.Dependency = {
     }
     return .package(
         url: "https://github.com/phynics/axoloty.git",
-        .upToNextMinor(from: "0.9.0")
+        revision: "a231be97c3e7f59180db27d14543de2e549c09c9"
     )
 }()
 
@@ -75,6 +75,7 @@ let package = Package(
             dependencies: [
                 .product(name: "Axoloty", package: "Axoloty"),
                 "AxolotyInspectorCore",
+                "AxolotyDiagnostics",
             ],
             path: "Sources/AxolotyInspectorRuntime"
         ),
@@ -94,6 +95,7 @@ let package = Package(
                 .product(name: "Axoloty", package: "Axoloty"),
                 "AxolotyInspectorCore",
                 "AxolotyInspectorRuntime",
+                "AxolotyDiagnostics",
                 .product(name: "MCP", package: "swift-sdk"),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "NIOCore", package: "swift-nio"),
@@ -138,6 +140,7 @@ let package = Package(
             dependencies: [
                 "AxolotyInspectorRuntime",
                 "AxolotyInspectorCore",
+                "AxolotyDiagnostics",
                 .product(name: "Axoloty", package: "Axoloty"),
             ],
             path: "Tests/AxolotyInspectorRuntimeTests"
@@ -148,6 +151,7 @@ let package = Package(
                 .product(name: "Axoloty", package: "Axoloty"),
                 "AxolotyInspectorCore",
                 "AxolotyInspectorRuntime",
+                "AxolotyDiagnostics",
             ],
             path: "Tests/AxolotyInspectorCLITests"
         ),
@@ -157,6 +161,7 @@ let package = Package(
                 "AxolotyMCP",
                 "AxolotyMCPServer",
                 "AxolotyDebug",
+                "AxolotyDiagnostics",
                 "AxolotyDebugTestSupport",
             ],
             path: "Tests/AxolotyMCPTests"

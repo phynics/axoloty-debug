@@ -2,6 +2,7 @@
 
 @testable import AxolotyMCP
 import AxolotyInspectorRuntime
+import AxolotyDiagnostics
 import Foundation
 import MCP
 import Testing
@@ -26,6 +27,7 @@ func objectInputSchemaCatalogueContract() throws {
         "axoloty_discover_objects",
         "axoloty_decode_payload",
         "axoloty_server_status",
+        "axoloty_get_diagnostics",
     ]
     let expectedPropertyTypes: [String: [String: String]] = [
         "axoloty_list_objects": [
@@ -48,6 +50,7 @@ func objectInputSchemaCatalogueContract() throws {
             "format": "string",
         ],
         "axoloty_server_status": [:],
+        "axoloty_get_diagnostics": [:],
     ]
 
     let tools = AxolotyMCPServer.objectInputSchemaTools
@@ -59,7 +62,7 @@ func objectInputSchemaCatalogueContract() throws {
         let propertyTypes = try #require(expectedPropertyTypes[tool.name])
 
         if propertyTypes.isEmpty {
-            #expect(tool.name == "axoloty_server_status")
+            #expect(tool.name == "axoloty_server_status" || tool.name == "axoloty_get_diagnostics")
             #expect(!schema.keys.contains("properties"))
         } else {
             let properties = try #require(schema["properties"]?.objectValue)
@@ -103,6 +106,72 @@ func statusReflectsInspectorTransportState() async throws {
 
     session.state = .offline
     #expect(!(await server.collectStatus()).mqttConnected)
+}
+
+@MainActor
+@Test("MCP diagnostics tool returns the shared versioned, redacted history")
+func diagnosticsToolExportsRedactedHistory() async throws {
+    let session = StatusSession()
+    let revealingPolicy = DiagnosticRedactionPolicy(revealDetail: true, revealIdentities: true)
+    session.diagnostics.record(DiagnosticEvent(
+        family: .presence,
+        label: "presenceChanged",
+        attributes: ["sourceID": "source-secret"],
+        detail: "private runtime detail",
+        provenance: DiagnosticProvenance(origin: .runtimeStream, runtimeSequence: 1, runtimeTimestampMS: 2),
+        policy: revealingPolicy
+    ))
+    let mcpServer = AxolotyMCPServer(session: session, namespace: "test")
+    let server = Server(
+        name: "axoloty-mcp-diagnostics-test",
+        version: "1.0.0",
+        capabilities: .init(tools: .init())
+    )
+    await mcpServer.registerHandlers(on: server)
+    let (clientTransport, serverTransport) = await InMemoryTransport.createConnectedPair()
+
+    do {
+        try await server.start(transport: serverTransport)
+        try await clientTransport.connect()
+        let initialize = Initialize.request(
+            id: 1,
+            .init(
+                protocolVersion: Version.latest,
+                capabilities: .init(),
+                clientInfo: .init(name: "diagnostics-test", version: "1.0")
+            )
+        )
+        try await clientTransport.send(try JSONEncoder().encode(initialize))
+        _ = try await receiveMCPMessage(from: clientTransport)
+
+        let request = CallTool.request(
+            id: 2,
+            CallTool.Parameters(name: "axoloty_get_diagnostics", arguments: [:])
+        )
+        try await clientTransport.send(try JSONEncoder().encode(request))
+        let response = try #require(JSONSerialization.jsonObject(
+            with: try await receiveMCPMessage(from: clientTransport)
+        ) as? [String: Any])
+        let result = try #require(response["result"] as? [String: Any])
+        #expect(result["isError"] as? Bool == false)
+        let content = try #require(result["content"] as? [[String: Any]])
+        let json = try #require(content.first?["text"] as? String)
+        #expect(!json.contains("source-secret"))
+        #expect(!json.contains("private runtime detail"))
+        let export = try #require(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        #expect(export["formatVersion"] as? Int == DiagnosticExport.currentVersion)
+        #expect(export["revealsDetail"] as? Bool == false)
+        #expect(export["revealsIdentities"] as? Bool == false)
+    } catch {
+        await server.stop()
+        await clientTransport.disconnect()
+        await serverTransport.disconnect()
+        throw error
+    }
+
+    await server.stop()
+    await clientTransport.disconnect()
+    await serverTransport.disconnect()
 }
 
 @MainActor

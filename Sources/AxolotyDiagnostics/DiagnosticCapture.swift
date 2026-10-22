@@ -4,6 +4,8 @@ import Foundation
 
 /// A failure to write a diagnostic capture.
 public enum DiagnosticCaptureError: Error, Equatable {
+    /// Capture configuration was changed after runtime observation started.
+    case configurationAfterStart
     /// The capture directory or file could not be prepared.
     case cannotPrepare(String)
     /// An event could not be encoded or written.
@@ -77,7 +79,10 @@ public final class DiagnosticCapture {
         do {
             var line = try encoder.encode(event)
             line.append(0x0A)
-            if handle == nil || currentBytes + line.count > configuration.maximumFileBytes {
+            guard line.count <= configuration.maximumFileBytes else {
+                throw DiagnosticCaptureError.cannotWrite("event exceeds maximum capture file size")
+            }
+            if handle == nil || line.count > configuration.maximumFileBytes - currentBytes {
                 try rotate()
             }
             try handle?.write(contentsOf: line)

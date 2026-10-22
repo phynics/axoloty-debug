@@ -33,6 +33,46 @@ struct InspectorArgumentParserTests {
         #expect(outcome == .version)
     }
 
+    @Test
+    func diagnosticsOptionsAreExplicitAndRedactedByDefault() {
+        let parsed = InspectorArgumentParser().parse(["diagnostics"])
+        guard case let .run(defaultConfig) = parsed,
+              case let .diagnostics(defaults) = defaultConfig.command else {
+            Issue.record("Expected diagnostics command")
+            return
+        }
+        #expect(defaults.duration == .unlimited)
+        #expect(defaults.captureDirectory == nil)
+        #expect(!defaults.revealDetail)
+        #expect(!defaults.revealIdentities)
+
+        let optedIn = InspectorArgumentParser().parse([
+            "diagnostics", "--duration", "5s", "--capture-dir", "/tmp/axoloty-capture",
+            "--reveal-detail", "--reveal-identities",
+        ])
+        guard case let .run(config) = optedIn,
+              case let .diagnostics(command) = config.command else {
+            Issue.record("Expected diagnostics options to parse")
+            return
+        }
+        #expect(command.duration.value == .seconds(5))
+        #expect(command.captureDirectory == "/tmp/axoloty-capture")
+        #expect(command.revealDetail)
+        #expect(command.revealIdentities)
+        #expect(config.output == .json)
+    }
+
+    @Test
+    func diagnosticsRejectsNonJSONOutput() {
+        #expect(
+            InspectorArgumentParser().parse(["diagnostics", "--output", "human"])
+                == .error(.invalidConfiguration(
+                    field: "output",
+                    reason: "diagnostics always writes a versioned JSON export"
+                ))
+        )
+    }
+
     // MARK: - Empty and unknown
 
     @Test
@@ -223,6 +263,7 @@ struct InspectorArgumentParserTests {
         Commands:
           catalog              Observe Advertise/Deadvertise and build an object catalogue.
           discover             Send a Discover request and collect Resolve responses.
+          diagnostics          Collect and export runtime diagnostic events as JSON.
           decode               Render a captured payload as CBOR diagnostic notation or JSON.
 
         Common options:
@@ -250,6 +291,12 @@ struct InspectorArgumentParserTests {
           --object-type TYPE   Select by full object type.
           --object-id UUID     Select by object UUID.
           --timeout D          Response collection timeout (e.g. 5s; default: unlimited).
+
+        Diagnostics options:
+          --duration D         Collection duration (default: unlimited, ends on interrupt).
+          --capture-dir PATH   Explicitly enable bounded rolling JSONL capture.
+          --reveal-detail      Keep free-form runtime details (redacted by default).
+          --reveal-identities  Keep source, object, and correlation IDs (redacted by default).
 
         Decode options:
           --payload HEX        Decode a hexadecimal payload.

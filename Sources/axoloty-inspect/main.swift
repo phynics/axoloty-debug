@@ -129,6 +129,17 @@ func runInspector(
             signalHandler: signalHandler
         )
         result = await app.run()
+    case .diagnostics:
+        let app = InspectorDiagnosticsApplication(
+            configuration: updatedConfig,
+            session: session,
+            writeOutput: { line in print(line) },
+            writeDiagnostic: { line in
+                FileHandle.standardError.write(Data("\(line)\n".utf8))
+            },
+            signalHandler: signalHandler
+        )
+        result = await app.run()
     case .decode:
         // The decode command is handled before session creation.
         return 0

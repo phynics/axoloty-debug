@@ -7,8 +7,25 @@ Runtime and debug tooling for the Axoloty distributed robotics and IoT framework
 ## Features & Executables
 
 - **`axoloty-debug`**: CLI runner managing development service stacks (`serve mqtt`, `serve mcp`, `serve dev`).
-- **`axoloty-inspect`**: Coaty and Zenoh object and topology inspector (`catalog`, `discover`, `decode`).
+- **`axoloty-inspect`**: Coaty and Zenoh object and topology inspector (`catalog`, `discover`, `diagnostics`, `decode`).
 - **`axoloty-mcp`**: Model Context Protocol (MCP) server exposing Axoloty discovery, telemetry, and status to LLM agents and debug orchestrators over stdio or HTTP.
+
+## Runtime diagnostics
+
+`axoloty-inspect diagnostics` collects Core's bounded runtime diagnostic stream
+and writes a versioned JSON export to standard output. Detail strings and
+source, object, and correlation IDs are redacted by default. An explicit
+`--capture-dir PATH` enables bounded rolling JSONL capture; `--reveal-detail`
+and `--reveal-identities` opt in to retaining those values.
+
+```sh
+axoloty-inspect diagnostics --duration 30s
+axoloty-inspect diagnostics --duration 30s --capture-dir ./diagnostics
+```
+
+MCP exposes the same history through the read-only `axoloty_get_diagnostics`
+tool and the `axoloty://diagnostics` resource. MCP always reapplies default
+redaction before returning an export.
 
 ## Installation & Building
 
@@ -42,8 +59,9 @@ COPY --from=ghcr.io/phynics/axoloty-debug:X.Y.Z /usr/local/bin/axoloty-debug /us
 
 ## Dependency Configuration & Local Core Overrides
 
-By default, `axoloty-debug` resolves the versioned Axoloty Core dependency from GitHub:
-- `https://github.com/phynics/axoloty.git` (0.9.x, from `0.9.0`)
+By default, this branch pins the Axoloty Core commit that provides the public
+bounded diagnostic API consumed here:
+- `https://github.com/phynics/axoloty.git` (`a231be97c3e7f59180db27d14543de2e549c09c9`, merged as Core PR #1048)
 
 ### Local Development Override
 
@@ -55,7 +73,7 @@ swift build
 swift test
 ```
 
-When unset or empty, SPM resolves the tagged release from GitHub without requiring a sibling checkout layout.
+When unset or empty, SPM resolves the pinned Core commit from GitHub without requiring a sibling checkout layout.
 
 ## Platform Support
 

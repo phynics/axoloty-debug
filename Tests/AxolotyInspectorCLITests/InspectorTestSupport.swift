@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Atakan DULKER. Licensed under the MIT License.
 
 import Axoloty
+import AxolotyDiagnostics
 import AxolotyInspectorCore
 import AxolotyInspectorRuntime
 import Foundation
@@ -40,6 +41,10 @@ final class FakeInspectorSession: InspectorSession {
     var discoverCallCount = 0
     var lastDiscoverRequest: InspectorDiscoverRequest?
     var streamsCreatedBeforeConnect = false
+    private(set) var configuredDiagnosticPolicy: DiagnosticRedactionPolicy?
+    private(set) var configuredCapture: DiagnosticCaptureConfiguration?
+    var captureFailure: DiagnosticCaptureError?
+    var storedDiagnosticHistory = DiagnosticHistory(capacity: 4)
 
     private var advertiseContinuation: AsyncStream<InspectorAdvertiseEvent>.Continuation?
     private var deadvertiseContinuation: AsyncStream<InspectorDeadvertiseEvent>.Continuation?
@@ -71,6 +76,18 @@ final class FakeInspectorSession: InspectorSession {
             deadvertiseContinuation?.yield(snapshot)
         }
     }
+
+    func configureDiagnostics(
+        redactionPolicy: DiagnosticRedactionPolicy,
+        captureConfiguration: DiagnosticCaptureConfiguration?
+    ) throws(DiagnosticCaptureError) {
+        configuredDiagnosticPolicy = redactionPolicy
+        configuredCapture = captureConfiguration
+    }
+
+    func diagnosticHistory() async -> DiagnosticHistory { storedDiagnosticHistory }
+
+    func diagnosticCaptureFailure() -> DiagnosticCaptureError? { captureFailure }
 
     func advertiseEvents() async -> AsyncStream<InspectorAdvertiseEvent> {
         let (stream, cont) = AsyncStream.makeStream(of: InspectorAdvertiseEvent.self)

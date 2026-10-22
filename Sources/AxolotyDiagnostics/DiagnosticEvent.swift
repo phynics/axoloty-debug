@@ -26,6 +26,8 @@ public struct DiagnosticProvenance: Sendable, Equatable, Codable {
     public enum Origin: String, Sendable, Equatable, Codable {
         /// The runtime's bounded diagnostic stream.
         case runtimeStream
+        /// A coalesced runtime diagnostics snapshot.
+        case runtimeSnapshot
     }
 
     /// The source the event was read from.

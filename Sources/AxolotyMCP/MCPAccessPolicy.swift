@@ -29,6 +29,7 @@ public struct MCPAccessPolicy: Sendable, Equatable {
         "axoloty_get_object",
         "axoloty_decode_payload",
         "axoloty_server_status",
+        "axoloty_get_diagnostics",
     ]
 
     /// The scope the policy applies to.
