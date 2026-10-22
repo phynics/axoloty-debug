@@ -29,6 +29,7 @@ public struct InspectorArgumentParser: Sendable {
     Commands:
       catalog              Observe Advertise/Deadvertise and build an object catalogue.
       discover             Send a Discover request and collect Resolve responses.
+      diagnostics          Collect and export runtime diagnostic events as JSON.
       decode               Render a captured payload as CBOR diagnostic notation or JSON.
 
     \(InspectorCommonOptionParser.helpText)
@@ -47,6 +48,12 @@ public struct InspectorArgumentParser: Sendable {
       --object-type TYPE   Select by full object type.
       --object-id UUID     Select by object UUID.
       --timeout D          Response collection timeout (e.g. 5s; default: unlimited).
+
+    Diagnostics options:
+      --duration D         Collection duration (default: unlimited, ends on interrupt).
+      --capture-dir PATH   Explicitly enable bounded rolling JSONL capture.
+      --reveal-detail      Keep free-form runtime details (redacted by default).
+      --reveal-identities  Keep source, object, and correlation IDs (redacted by default).
 
     Decode options:
       --payload HEX        Decode a hexadecimal payload.
@@ -84,6 +91,7 @@ public struct InspectorArgumentParser: Sendable {
         case "--version", "-v": return .version
         case "catalog": return parseCatalog(Array(arguments.dropFirst()), environment: environment)
         case "discover": return parseDiscover(Array(arguments.dropFirst()), environment: environment)
+        case "diagnostics": return parseDiagnostics(Array(arguments.dropFirst()), environment: environment)
         case "decode": return parseDecode(Array(arguments.dropFirst()))
         default: return .error(.invalidArguments(reason: "unknown command: \(arguments[0])"))
         }
@@ -210,6 +218,82 @@ private extension InspectorArgumentParser {
             command: .discover(DiscoverCommand(coreType: coreType, objectType: objectType, objectId: objectId, timeout: timeout)),
             connection: common.connection,
             output: common.output,
+            logLevel: common.logLevel.rawValue,
+            passwordFromStdin: common.passwordFromStdin
+        ))
+    }
+
+    func parseDiagnostics(_ args: [String], environment: InspectorEnvironmentValues) -> InspectorParseOutcome {
+        var common = InspectorCommonOptions(environment: environment)
+        var duration = InspectorDuration.unlimited
+        var captureDirectory: String?
+        var revealDetail = false
+        var revealIdentities = false
+        var seenSingletons = Set<String>()
+        var i = 0
+        while i < args.count {
+            let arg = args[i]
+            switch InspectorCommonOptionParser.parse(args, at: i, options: &common) {
+            case let .consumed(nextIndex):
+                i = nextIndex
+                continue
+            case let .failure(error):
+                return .error(error)
+            case .unrecognized:
+                break
+            }
+            switch arg {
+            case "--duration":
+                guard let (value, next) = consumeValue(args, at: i) else {
+                    return .error(.invalidArguments(reason: "--duration requires a value"))
+                }
+                guard seenSingletons.insert("duration").inserted else {
+                    return .error(.invalidArguments(reason: "--duration specified more than once"))
+                }
+                guard let parsed = InspectorDuration(rawValue: value) else {
+                    return .error(.invalidConfiguration(field: "duration", reason: "invalid duration: \(value)"))
+                }
+                duration = parsed
+                i = next
+            case "--capture-dir":
+                guard let (value, next) = consumeValue(args, at: i) else {
+                    return .error(.invalidArguments(reason: "--capture-dir requires a value"))
+                }
+                guard seenSingletons.insert("capture-dir").inserted else {
+                    return .error(.invalidArguments(reason: "--capture-dir specified more than once"))
+                }
+                guard !value.isEmpty else {
+                    return .error(.invalidArguments(reason: "--capture-dir must not be empty"))
+                }
+                captureDirectory = value
+                i = next
+            case "--reveal-detail":
+                revealDetail = true
+                i += 1
+            case "--reveal-identities":
+                revealIdentities = true
+                i += 1
+            default:
+                return .error(.invalidArguments(reason: "unknown option: \(arg)"))
+            }
+        }
+
+        guard common.output == .auto || common.output == .json else {
+            return .error(.invalidConfiguration(
+                field: "output",
+                reason: "diagnostics always writes a versioned JSON export"
+            ))
+        }
+
+        return .run(InspectorConfiguration(
+            command: .diagnostics(DiagnosticsCommand(
+                duration: duration,
+                captureDirectory: captureDirectory,
+                revealDetail: revealDetail,
+                revealIdentities: revealIdentities
+            )),
+            connection: common.connection,
+            output: .json,
             logLevel: common.logLevel.rawValue,
             passwordFromStdin: common.passwordFromStdin
         ))

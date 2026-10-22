@@ -10,6 +10,8 @@ public enum DiagnosticReplayLimitation: String, Sendable, Equatable, Codable, Ca
     case runtimeStreamLoss
     /// A sequence gap shows that values are missing from the middle.
     case sequenceGap
+    /// Runtime sequence numbers moved backwards in the record.
+    case sequenceRegression
     /// Peer presence was non-authoritative when the record was taken.
     case presenceUncertain
     /// The first retained event is not the runtime's first value, so earlier
@@ -110,6 +112,8 @@ public struct DiagnosticReplay: Sendable, Equatable {
             case .historyOverflow: .historyOverflow
             case .runtimeStreamLoss: .runtimeStreamLoss
             case .sequenceGap: .sequenceGap
+            case .sequenceRegression: .sequenceRegression
+            case .unsequencedEvents: .unsequencedEvents
             case .presenceUncertain: .presenceUncertain
             }
         }
@@ -121,7 +125,13 @@ public struct DiagnosticReplay: Sendable, Equatable {
         if sequences.contains(0) { result.append(.unsequencedEvents) }
         let proven = sequences.filter { $0 != 0 }
         if let first = proven.first, first != 1 { result.append(.missingLeadingEvents) }
-        if zip(proven, proven.dropFirst()).contains(where: { $1 != $0 + 1 }) { result.append(.sequenceGap) }
+        for (previous, next) in zip(proven, proven.dropFirst()) {
+            if next <= previous {
+                result.append(.sequenceRegression)
+            } else if next - previous > 1 {
+                result.append(.sequenceGap)
+            }
+        }
         return result
     }
 

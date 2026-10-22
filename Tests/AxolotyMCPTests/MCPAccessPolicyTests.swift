@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Atakan DULKER. Licensed under the MIT License.
 
 import AxolotyInspectorCore
+import AxolotyDiagnostics
 @testable import AxolotyMCP
 import Testing
 
@@ -35,6 +36,27 @@ func remoteIsAlwaysReadOnly() {
 func everyToolIsClassified() {
     let advertised = Set(AxolotyMCPServer.objectInputSchemaTools.map(\.name))
     #expect(advertised == MCPAccessPolicy.readTools.union(MCPAccessPolicy.controlTools))
+}
+
+@Test("MCP diagnostic exports always redact details and identities")
+func diagnosticExportIsRedactedForMCP() throws {
+    let revealing = DiagnosticRedactionPolicy(revealDetail: true, revealIdentities: true)
+    let event = DiagnosticEvent(
+        family: .presence,
+        label: "presenceChanged",
+        attributes: ["sourceID": "source-secret"],
+        detail: "private detail",
+        provenance: DiagnosticProvenance(origin: .runtimeStream, runtimeSequence: 1, runtimeTimestampMS: 2),
+        policy: revealing
+    )
+    var history = DiagnosticHistory(capacity: 2)
+    history.record(event)
+
+    let json = try AxolotyMCPServer.encodeDiagnostics(history)
+
+    #expect(!json.contains("source-secret"))
+    #expect(!json.contains("private detail"))
+    #expect(json.contains(DiagnosticRedactionPolicy.marker))
 }
 
 @Test("Payloads and private data are redacted by default")

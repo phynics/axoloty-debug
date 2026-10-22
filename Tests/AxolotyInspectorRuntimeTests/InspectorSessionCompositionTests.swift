@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Atakan DULKER. Licensed under the MIT License.
 
 import Axoloty
+import AxolotyDiagnostics
 import AxolotyInspectorCore
-import AxolotyInspectorRuntime
 import AxolotyProtocol
 import AxolotyWire
 import Testing
+
+@testable import AxolotyInspectorRuntime
 
 /// A transport that accepts everything and reaches no network.
 private actor StubTransport: AxolotyRuntimeTransport {
@@ -51,6 +53,66 @@ func inspectorSessionComposesOnASuppliedTransport() throws {
     }
 
     #expect(observed.value == configuration)
+}
+
+@Test("Core typed observations map to the shared redacted diagnostic model")
+func runtimeDiagnosticAdapterPreservesTypedProvenance() {
+    let observation = RuntimeLifecycleObservation(
+        from: .starting,
+        to: .running,
+        transportEpoch: 9
+    )
+    let diagnostic = RuntimeDiagnostic(
+        kind: .reconnected,
+        detail: "private runtime detail",
+        sequence: 7,
+        timestampMS: 21,
+        observation: .lifecycle(observation)
+    )
+
+    let event = RuntimeDiagnosticAdapter.event(from: diagnostic, policy: .redactAll)
+
+    #expect(event.family == .lifecycle)
+    #expect(event.label == "reconnected")
+    #expect(event.attributes["from"] == "starting")
+    #expect(event.attributes["to"] == "running")
+    #expect(event.attributes["transportEpoch"] == "9")
+    #expect(event.detail == DiagnosticRedactionPolicy.marker)
+    #expect(event.provenance.runtimeSequence == 7)
+    #expect(event.provenance.runtimeTimestampMS == 21)
+
+    let untypedRequest = RuntimeDiagnostic(
+        kind: .requestExpired,
+        detail: "private request detail",
+        sequence: 8,
+        timestampMS: 22,
+        observation: nil
+    )
+    #expect(RuntimeDiagnosticAdapter.event(from: untypedRequest, policy: .redactAll).family == .request)
+}
+
+@Test @MainActor
+func inspectorSessionCollectsRuntimeDiagnosticEvents() async throws {
+    let configuration = InspectorConnectionConfiguration(
+        host: "unused.invalid",
+        port: 1883,
+        namespace: "test"
+    )
+    let session = try AxolotyInspectorSession(configuration: configuration) { _ in StubTransport() }
+
+    try await session.connect()
+    var history = await session.diagnosticHistory()
+    for _ in 0..<100 where history.events.isEmpty {
+        await Task.yield()
+        history = await session.diagnosticHistory()
+    }
+    await session.stop()
+
+    #expect(history.events.contains { $0.family == .lifecycle })
+    #expect(history.events.contains { $0.provenance.origin == .runtimeSnapshot })
+    #expect(history.uncertainty.contains(.unsequencedEvents))
+    #expect(history.events.filter { $0.provenance.origin == .runtimeStream }
+        .allSatisfy { $0.provenance.runtimeSequence > 0 })
 }
 
 /// A failing factory surfaces as a session construction failure rather than

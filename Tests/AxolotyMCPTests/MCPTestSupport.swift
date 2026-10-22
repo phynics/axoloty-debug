@@ -1,12 +1,14 @@
 // Copyright (c) 2026 Atakan DULKER. Licensed under the MIT License.
 
 import AxolotyInspectorRuntime
+import AxolotyDiagnostics
 import Foundation
 import Testing
 
 @MainActor
 final class StatusSession: InspectorSession {
     var state: InspectorTransportState = .online
+    var diagnostics = DiagnosticHistory(capacity: 4)
 
     func connect() async throws {}
     func transportState() async -> InspectorTransportState { state }
@@ -19,6 +21,7 @@ final class StatusSession: InspectorSession {
     func discover(_ event: InspectorDiscoverRequest) async -> AsyncStream<InspectorResponseEvent> {
         AsyncStream { _ in }
     }
+    func diagnosticHistory() async -> DiagnosticHistory { diagnostics }
     func stop() {}
 }
 

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Atakan DULKER. Licensed under the MIT License.
 
 import Axoloty
+import AxolotyDiagnostics
 import AxolotyInspectorCore
 import AxolotyWire
 import Foundation
@@ -20,6 +21,45 @@ public protocol InspectorSession: InspectorDiscovering {
     func discover(_ request: InspectorDiscoverRequest) async -> AsyncStream<InspectorResponseEvent>
     /// Requests runtime shutdown.
     func stop() async
+    /// Configures diagnostic redaction and optional rolling capture before connect.
+    ///
+    /// - Parameters:
+    ///   - redactionPolicy: The policy applied before an event enters memory.
+    ///   - captureConfiguration: An explicit rolling-capture destination, or
+    ///     `nil` to keep diagnostics in memory only.
+    /// - Throws: ``DiagnosticCaptureError`` when capture cannot be prepared or
+    ///   configuration occurs after connection starts.
+    func configureDiagnostics(
+        redactionPolicy: DiagnosticRedactionPolicy,
+        captureConfiguration: DiagnosticCaptureConfiguration?
+    ) throws(DiagnosticCaptureError)
+    /// Returns the current bounded diagnostic history, including runtime loss
+    /// and presence uncertainty from a fresh Core snapshot.
+    func diagnosticHistory() async -> DiagnosticHistory
+    /// Returns a rolling-capture write failure, if one occurred.
+    func diagnosticCaptureFailure() -> DiagnosticCaptureError?
+}
+
+extension InspectorSession {
+    /// Uses in-memory defaults when a session has no diagnostic support.
+    ///
+    /// - Parameters:
+    ///   - redactionPolicy: The policy a diagnostic-capable session would use.
+    ///   - captureConfiguration: An optional rolling-capture configuration.
+    /// - Throws: ``DiagnosticCaptureError`` if a diagnostic-capable session
+    ///   cannot prepare the requested capture.
+    public func configureDiagnostics(
+        redactionPolicy: DiagnosticRedactionPolicy,
+        captureConfiguration: DiagnosticCaptureConfiguration?
+    ) throws(DiagnosticCaptureError) {}
+
+    /// Returns an empty history when a session does not provide diagnostics.
+    public func diagnosticHistory() async -> DiagnosticHistory {
+        DiagnosticHistory(capacity: 1)
+    }
+
+    /// Returns no capture failure when a session does not provide diagnostics.
+    public func diagnosticCaptureFailure() -> DiagnosticCaptureError? { nil }
 }
 
 /// Inspector adapter over the structured host runtime and a supplied transport.
@@ -36,6 +76,12 @@ public final class AxolotyInspectorSession: InspectorSession {
     private var discoveryInFlight = false
     private var discoveryTask: Task<Void, Never>?
     private var discoveryCorrelation: UUID16?
+    private var diagnosticHistory = DiagnosticHistory(capacity: 256)
+    private var diagnosticRedactionPolicy = DiagnosticRedactionPolicy.redactAll
+    private var diagnosticCapture: DiagnosticCapture?
+    private var captureFailure: DiagnosticCaptureError?
+    private var diagnosticTask: Task<Void, Never>?
+    private var connectionStarted = false
 
     /// Builds the transport a session runs on.
     ///
@@ -86,13 +132,59 @@ public final class AxolotyInspectorSession: InspectorSession {
     }
 
     public func connect() async throws {
+        connectionStarted = true
+        let diagnostics = await runtime.diagnostics()
+        diagnosticTask = Task { @MainActor [weak self] in
+            for await diagnostic in diagnostics {
+                guard let self, !Task.isCancelled else { return }
+                self.record(diagnostic)
+            }
+        }
         do {
             try await runtime.start()
+            await refreshDiagnosticState(recordSnapshotEvents: true)
         } catch let error as AxolotyError {
+            await refreshDiagnosticState(recordSnapshotEvents: true)
             throw InspectorError.connectionUnavailable(reason: error.userFriendlyMessage)
         } catch {
+            await refreshDiagnosticState(recordSnapshotEvents: true)
             throw InspectorError.connectionUnavailable(reason: String(describing: error))
         }
+    }
+
+    /// Sets diagnostic redaction and optional rolling capture before connect.
+    ///
+    /// - Parameters:
+    ///   - redactionPolicy: The policy applied before events enter history.
+    ///   - captureConfiguration: The explicit rolling-capture configuration,
+    ///     or `nil` to keep events in memory only.
+    /// - Throws: ``DiagnosticCaptureError`` if capture cannot be prepared or
+    ///   the session has already started connecting.
+    public func configureDiagnostics(
+        redactionPolicy: DiagnosticRedactionPolicy = .redactAll,
+        captureConfiguration: DiagnosticCaptureConfiguration? = nil
+    ) throws(DiagnosticCaptureError) {
+        guard !connectionStarted else { throw .configurationAfterStart }
+        let capture = try captureConfiguration.map(DiagnosticCapture.init(configuration:))
+        diagnosticRedactionPolicy = redactionPolicy
+        diagnosticCapture = capture
+        captureFailure = nil
+    }
+
+    /// Returns retained diagnostics and a fresh runtime loss/presence snapshot.
+    ///
+    /// - Returns: The bounded, presentation-neutral diagnostic history.
+    public func diagnosticHistory() async -> DiagnosticHistory {
+        await refreshDiagnosticState()
+        return diagnosticHistory
+    }
+
+    /// Returns a rolling-capture error recorded during event ingestion.
+    ///
+    /// - Returns: The first capture failure, or `nil` when capture is healthy
+    ///   or disabled.
+    public func diagnosticCaptureFailure() -> DiagnosticCaptureError? {
+        captureFailure
     }
 
     public func transportState() async -> InspectorTransportState {
@@ -185,6 +277,50 @@ public final class AxolotyInspectorSession: InspectorSession {
     public func stop() async {
         cancelDiscovery()
         await runtime.stop()
+        diagnosticTask?.cancel()
+        await diagnosticTask?.value
+        diagnosticTask = nil
+        await refreshDiagnosticState(final: true)
+    }
+
+    private func record(_ diagnostic: RuntimeDiagnostic) {
+        let event = RuntimeDiagnosticAdapter.event(
+            from: diagnostic,
+            policy: diagnosticRedactionPolicy
+        )
+        diagnosticHistory.record(event)
+        if let diagnosticCapture {
+            do {
+                try diagnosticCapture.append(event)
+            } catch {
+                captureFailure = error
+                self.diagnosticCapture = nil
+            }
+        }
+    }
+
+    private func refreshDiagnosticState(
+        recordSnapshotEvents: Bool = false,
+        final: Bool = false
+    ) async {
+        let snapshot = await runtime.diagnosticsSnapshot()
+        if recordSnapshotEvents {
+            for event in RuntimeDiagnosticAdapter.events(from: snapshot, policy: diagnosticRedactionPolicy) {
+                diagnosticHistory.record(event)
+            }
+        }
+        if final {
+            diagnosticHistory.recordFinalRuntimeState(
+                streamDropped: snapshot.diagnosticsDropped,
+                presenceUncertain: snapshot.presenceUncertain,
+                diagnosticsEmitted: snapshot.diagnosticsEmitted
+            )
+        } else {
+            diagnosticHistory.recordRuntimeState(
+                streamDropped: snapshot.diagnosticsDropped,
+                presenceUncertain: snapshot.presenceUncertain
+            )
+        }
     }
 
     private func cancelDiscovery() {

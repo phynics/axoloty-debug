@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Atakan DULKER. Licensed under the MIT License.
 
 import Axoloty
+import AxolotyDiagnostics
 import AxolotyInspectorCore
 import AxolotyInspectorRuntime
 import ErrorKit
@@ -25,7 +26,7 @@ public final class AxolotyMCPServer {
     private static let logger = Logger(label: "axoloty.mcp")
     private let server: Server
     private let catalogueService: InspectorCatalogueService
-    private let session: InspectorDiscovering
+    private let session: InspectorSession
     private let responseEncoder: ResponseEncoder
     private let encodingFailureLogger: EncodingFailureLogger
     private let accessPolicy: MCPAccessPolicy
@@ -117,6 +118,13 @@ public final class AxolotyMCPServer {
         Tool(
             name: "axoloty_server_status",
             description: "Get the current server status including MQTT connection state and catalogue metrics.",
+            inputSchema: .object([
+                "type": .string("object"),
+            ])
+        ),
+        Tool(
+            name: "axoloty_get_diagnostics",
+            description: "Get the bounded, redacted runtime diagnostic history and its completeness information.",
             inputSchema: .object([
                 "type": .string("object"),
             ])
@@ -306,6 +314,8 @@ public final class AxolotyMCPServer {
                 return Self.handleDecodePayload(params.arguments)
             case "axoloty_server_status":
                 return await self.handleServerStatus()
+            case "axoloty_get_diagnostics":
+                return await self.handleDiagnostics()
             default:
                 return .init(content: [.text("Unknown tool: \(params.name)")], isError: true)
             }
@@ -316,6 +326,7 @@ public final class AxolotyMCPServer {
             return .init(resources: [
                 Resource(name: "Status", uri: "axoloty://status", description: "Server status"),
                 Resource(name: "Catalogue", uri: "axoloty://catalogue", description: "Passive object catalogue"),
+                Resource(name: "Diagnostics", uri: "axoloty://diagnostics", description: "Bounded, redacted runtime diagnostics"),
             ], nextCursor: nil)
         }
 
@@ -329,6 +340,9 @@ public final class AxolotyMCPServer {
             case "axoloty://catalogue":
                 let snapshot = await service.store.snapshot(filter: ObjectCatalogueFilter())
                 let json = try Self.encodeSnapshot(policy.redact(snapshot))
+                return .init(contents: [.text(json, uri: params.uri, mimeType: "application/json")])
+            case "axoloty://diagnostics":
+                let json = try await self.diagnosticsJSON()
                 return .init(contents: [.text(json, uri: params.uri, mimeType: "application/json")])
             default:
                 throw MCPError.invalidParams("Unknown resource URI: \(params.uri)")
@@ -621,6 +635,23 @@ public final class AxolotyMCPServer {
         }
     }
 
+    private func handleDiagnostics() async -> CallTool.Result {
+        do {
+            let json = try await diagnosticsJSON()
+            return .init(content: [.text(json)], isError: false)
+        } catch {
+            return Self.encodingFailureResult(
+                operation: "axoloty_get_diagnostics",
+                error: error,
+                logger: encodingFailureLogger
+            )
+        }
+    }
+
+    private func diagnosticsJSON() async throws(DiagnosticReplayError) -> String {
+        try Self.encodeDiagnostics(await session.diagnosticHistory())
+    }
+
     // MARK: - Helpers
 
     func collectStatus() async -> ServerStatus {
@@ -699,6 +730,11 @@ public final class AxolotyMCPServer {
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(status)
         return String(decoding: data, as: UTF8.self)
+    }
+
+    nonisolated static func encodeDiagnostics(_ history: DiagnosticHistory) throws(DiagnosticReplayError) -> String {
+        let export = DiagnosticExport(history: history.redacted())
+        return String(decoding: try export.encoded(), as: UTF8.self)
     }
 }
 

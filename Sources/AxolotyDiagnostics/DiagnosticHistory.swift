@@ -8,6 +8,10 @@ public enum DiagnosticUncertainty: String, Sendable, Equatable, Codable, CaseIte
     case runtimeStreamLoss
     /// A sequence gap showed that values were lost between two reads.
     case sequenceGap
+    /// A runtime sequence moved backwards between two reads.
+    case sequenceRegression
+    /// An event had no runtime-assigned sequence number.
+    case unsequencedEvents
     /// A transport reset made peer presence non-authoritative.
     case presenceUncertain
 }
@@ -31,8 +35,11 @@ public struct DiagnosticHistory: Sendable, Equatable {
     public private(set) var presenceUncertain = false
 
     private var lastRuntimeSequence: UInt64?
+    private var observedRuntimeValues: UInt64 = 0
     private var observedSequenceGap = false
+    private var observedSequenceRegression = false
     private var observedStreamLoss = false
+    private var observedUnsequencedEvents = false
 
     /// Creates an empty history.
     ///
@@ -49,6 +56,8 @@ public struct DiagnosticHistory: Sendable, Equatable {
         if evictedCount > 0 { reasons.append(.historyOverflow) }
         if observedStreamLoss { reasons.append(.runtimeStreamLoss) }
         if observedSequenceGap { reasons.append(.sequenceGap) }
+        if observedSequenceRegression { reasons.append(.sequenceRegression) }
+        if observedUnsequencedEvents { reasons.append(.unsequencedEvents) }
         if presenceUncertain { reasons.append(.presenceUncertain) }
         return reasons
     }
@@ -60,12 +69,26 @@ public struct DiagnosticHistory: Sendable, Equatable {
     /// - Parameter event: The event to retain.
     public mutating func record(_ event: DiagnosticEvent) {
         let sequence = event.provenance.runtimeSequence
-        if sequence != 0 {
-            if let last = lastRuntimeSequence, sequence > last + 1 {
-                lostRuntimeValues += sequence - last - 1
-                observedSequenceGap = true
+        if event.provenance.origin == .runtimeStream {
+            let (observed, overflow) = observedRuntimeValues.addingReportingOverflow(1)
+            observedRuntimeValues = overflow ? .max : observed
+        }
+        if sequence == 0 {
+            observedUnsequencedEvents = true
+        } else {
+            if let last = lastRuntimeSequence, sequence > last {
+                if sequence - last > 1 {
+                    let gap = sequence - last - 1
+                    let (total, overflow) = lostRuntimeValues.addingReportingOverflow(gap)
+                    lostRuntimeValues = overflow ? .max : total
+                    observedSequenceGap = true
+                }
+                lastRuntimeSequence = sequence
+            } else if let last = lastRuntimeSequence, sequence < last {
+                observedSequenceRegression = true
+            } else if lastRuntimeSequence == nil {
+                lastRuntimeSequence = sequence
             }
-            lastRuntimeSequence = sequence
         }
         events.append(event)
         if events.count > capacity {
@@ -84,6 +107,49 @@ public struct DiagnosticHistory: Sendable, Equatable {
             observedStreamLoss = true
             lostRuntimeValues = max(lostRuntimeValues, streamDropped)
         }
-        self.presenceUncertain = presenceUncertain
+        self.presenceUncertain = self.presenceUncertain || presenceUncertain
+    }
+
+    /// Folds final runtime counters into the history after its stream consumer ends.
+    ///
+    /// The difference between emitted and observed values is reported as loss,
+    /// including values still buffered when collection stopped.
+    ///
+    /// - Parameters:
+    ///   - streamDropped: The runtime's cumulative count of dropped stream values.
+    ///   - presenceUncertain: Whether peer presence is non-authoritative.
+    ///   - diagnosticsEmitted: The runtime's cumulative count of emitted values.
+    public mutating func recordFinalRuntimeState(
+        streamDropped: UInt64,
+        presenceUncertain: Bool,
+        diagnosticsEmitted: UInt64
+    ) {
+        recordRuntimeState(streamDropped: streamDropped, presenceUncertain: presenceUncertain)
+        guard diagnosticsEmitted > observedRuntimeValues else { return }
+        let missingValues = diagnosticsEmitted - observedRuntimeValues
+        lostRuntimeValues = max(lostRuntimeValues, missingValues)
+        observedSequenceGap = true
+    }
+
+    /// Returns a copy with sensitive event fields redacted under `policy`.
+    ///
+    /// Existing uncertainty and loss counts are preserved. Redaction is
+    /// irreversible because the original event values are not retained.
+    ///
+    /// - Parameter policy: The policy to apply to each retained event.
+    /// - Returns: A history with the same completeness state and redacted data.
+    public func redacted(using policy: DiagnosticRedactionPolicy = .redactAll) -> DiagnosticHistory {
+        var history = self
+        history.events = events.map { event in
+            DiagnosticEvent(
+                family: event.family,
+                label: event.label,
+                attributes: event.attributes,
+                detail: event.detail,
+                provenance: event.provenance,
+                policy: policy
+            )
+        }
+        return history
     }
 }

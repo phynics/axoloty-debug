@@ -6,8 +6,35 @@ public enum InspectorCommand: Equatable, Sendable {
     case catalog(CatalogCommand)
     /// Active discovery via a single Discover request and Resolve collection.
     case discover(DiscoverCommand)
+    /// Collect a bounded, redacted runtime diagnostic history.
+    case diagnostics(DiagnosticsCommand)
     /// Local rendering of a captured payload; no broker connection is used.
     case decode(DecodeCommand)
+}
+
+/// Options for live runtime diagnostic collection.
+public struct DiagnosticsCommand: Equatable, Sendable {
+    /// How long to collect diagnostics. Unlimited collection ends on interrupt.
+    public let duration: InspectorDuration
+    /// The optional directory for explicitly enabled rolling capture.
+    public let captureDirectory: String?
+    /// Whether to retain free-form runtime detail strings.
+    public let revealDetail: Bool
+    /// Whether to retain source, object, and correlation identities.
+    public let revealIdentities: Bool
+
+    /// Creates diagnostic collection options.
+    public init(
+        duration: InspectorDuration = .unlimited,
+        captureDirectory: String? = nil,
+        revealDetail: Bool = false,
+        revealIdentities: Bool = false
+    ) {
+        self.duration = duration
+        self.captureDirectory = captureDirectory
+        self.revealDetail = revealDetail
+        self.revealIdentities = revealIdentities
+    }
 }
 
 /// Options for the passive catalogue command.
