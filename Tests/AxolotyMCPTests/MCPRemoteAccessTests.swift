@@ -152,15 +152,32 @@ func remoteHTTPSessionsRequireTokenAndRejectControls() async throws {
     )
 }
 
+private struct EmptyHTTPResponse: Error, CustomStringConvertible {
+    let operation: String
+    let statusCode: Int
+    let contentType: String
+    let sessionID: String
+
+    var description: String {
+        "\(operation) response was empty: status=\(statusCode), contentType=\(contentType), session=\(sessionID)"
+    }
+}
+
 private func requireResponseBody(
     _ data: Data,
     response: HTTPURLResponse,
     operation: String
-) throws {
+) throws(EmptyHTTPResponse) {
     let contentType = response.value(forHTTPHeaderField: "Content-Type") ?? "missing"
     let sessionID = response.value(forHTTPHeaderField: "Mcp-Session-Id") ?? "missing"
-    let message = "\(operation) response was empty: status=\(response.statusCode), contentType=\(contentType), session=\(sessionID)"
-    try #require(!data.isEmpty, message)
+    guard !data.isEmpty else {
+        throw EmptyHTTPResponse(
+            operation: operation,
+            statusCode: response.statusCode,
+            contentType: contentType,
+            sessionID: sessionID
+        )
+    }
 }
 
 private func jsonMessage(from data: Data) throws -> [String: Any] {
