@@ -1,8 +1,15 @@
 // Copyright (c) 2026 Atakan DULKER. Licensed under the MIT License.
 
 import AxolotyDebug
+import AxolotyMCP
 import Foundation
 import Testing
+
+#if canImport(Glibc)
+import Glibc
+#elseif canImport(Darwin)
+import Darwin
+#endif
 
 @Test("MCP executable rejects invalid broker port")
 func executableRejectsInvalidBrokerPort() throws {
@@ -190,9 +197,48 @@ func executableRejectsInvalidAccessTokenFile() throws {
     #expect(empty.standardError.contains("access token file is empty or contains invalid whitespace"))
 }
 
+@Test("MCP executable rejects access-token files with unsafe permissions")
+func executableRejectsWorldReadableAccessTokenFile() throws {
+    let tokenFile = try writeAccessToken("remote-token")
+    defer { try? FileManager.default.removeItem(at: tokenFile) }
+    try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: tokenFile.path)
+
+    let result = try runMCPExecutable(arguments: [
+        "--transport", "http",
+        "--access-token-file", tokenFile.path,
+    ])
+
+    #expect(result.exitCode == 64)
+    #expect(result.standardError.contains("unable to read access token file"))
+}
+
+@Test("MCP executable rejects oversized token files and FIFOs without blocking")
+func executableRejectsOversizedAndSpecialAccessTokenFiles() throws {
+    let oversized = try writeAccessToken(String(repeating: "a", count: MCPAccessProtection.maximumTokenBytes + 1))
+    defer { try? FileManager.default.removeItem(at: oversized) }
+    let oversizedResult = try runMCPExecutable(arguments: [
+        "--transport", "http",
+        "--access-token-file", oversized.path,
+    ])
+    #expect(oversizedResult.exitCode == 64)
+    #expect(oversizedResult.standardError.contains("unable to read access token file"))
+
+    let fifo = FileManager.default.temporaryDirectory
+        .appendingPathComponent("axoloty-mcp-token-fifo-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: fifo) }
+    #expect(mkfifo(fifo.path, 0o600) == 0)
+    let fifoResult = try runMCPExecutable(arguments: [
+        "--transport", "http",
+        "--access-token-file", fifo.path,
+    ])
+    #expect(fifoResult.exitCode == 64)
+    #expect(fifoResult.standardError.contains("unable to read access token file"))
+}
+
 private func writeAccessToken(_ contents: String) throws -> URL {
     let url = FileManager.default.temporaryDirectory
         .appendingPathComponent("axoloty-mcp-token-\(UUID().uuidString)")
     try Data(contents.utf8).write(to: url)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     return url
 }

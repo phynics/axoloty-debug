@@ -11,7 +11,7 @@ import MCP
     import FoundationNetworking
 #endif
 
-/// A loopback-only NIO HTTP server that fronts the MCP SDK's
+/// An NIO HTTP server that fronts the MCP SDK's
 /// ``StatefulHTTPServerTransport`` for the Streamable HTTP transport.
 ///
 /// The server accepts HTTP connections, converts NIO HTTP request parts into
@@ -21,11 +21,13 @@ import MCP
 /// per session via ``serverFactory``; sessions are addressed by the
 /// `MCP-Session-Id` header.
 ///
-/// A loopback host (`127.0.0.1`, `localhost`, `::1`) needs no extra protection
-/// and uses ``MCP/OriginValidator`` scoped to ``localhost(port:)``. Any other
-/// bind address is remote: it requires ``MCPAccessProtection`` and its bearer
-/// token is checked before the MCP transport sees the request. DNS-rebinding
-/// protection is the responsibility of the protected remote deployment.
+/// Loopback hosts (`127.0.0.1`, `localhost`, `::1`) need no extra protection
+/// and use ``MCP/OriginValidator`` scoped to ``localhost(port:)``. The literal
+/// `localhost` is bound directly to `127.0.0.1`; name-service results cannot
+/// change its reachability. Any other bind address is remote: it requires
+/// ``MCPAccessProtection`` and its bearer token is checked before the MCP
+/// transport sees the request. DNS-rebinding protection is the responsibility
+/// of the protected remote deployment.
 public actor MCPHTTPServer {
     /// Creates a new ``MCP/Server`` for an incoming session and starts it on
     /// the supplied transport.
@@ -60,8 +62,9 @@ public actor MCPHTTPServer {
     /// Creates a new MCP HTTP server.
     ///
     /// - Parameters:
-    ///   - host: Loopback bind address. Must be `127.0.0.1`, `localhost`, or
-    ///     `::1`; any other value is rejected when ``start()`` runs.
+    ///   - host: Bind address. `localhost` binds directly to `127.0.0.1`;
+    ///     `127.0.0.1` and `::1` bind as supplied. Any other value requires
+    ///     ``MCPAccessProtection`` and is rejected by ``start()`` if unprotected.
     ///   - port: TCP port to bind.
     ///   - endpoint: MCP endpoint path (defaults to `/mcp`).
     ///   - maxRequestBodyBytes: Maximum request body size accepted by the
@@ -129,7 +132,7 @@ public actor MCPHTTPServer {
             .childChannelOption(ChannelOptions.maxMessagesPerRead, value: 1)
 
         do {
-            let channel = try await bootstrap.bind(host: host, port: Int(port)).get()
+            let channel = try await bootstrap.bind(host: Self.boundHost(for: host), port: Int(port)).get()
             self.channel = channel
             resumeListeningWaiters()
             cleanupTask = Task { await self.sessionCleanupLoop() }
@@ -139,6 +142,10 @@ public actor MCPHTTPServer {
             resumeListeningWaiters()
             throw error
         }
+    }
+
+    static func boundHost(for host: String) -> String {
+        host == "localhost" ? "127.0.0.1" : host
     }
 
     /// Stops the HTTP server, closing all active sessions and the channel.
@@ -196,7 +203,7 @@ public actor MCPHTTPServer {
         if let accessProtection,
             !BearerTokenAccessValidator.authorizes(
                 request,
-                expectedToken: accessProtection.bearerToken
+                accessProtection: accessProtection
             )
         {
             return BearerTokenAccessValidator.unauthorized
@@ -568,7 +575,7 @@ private enum BearerTokenAccessValidator {
         )
     }
 
-    static func authorizes(_ request: HTTPRequest, expectedToken: String) -> Bool {
+    static func authorizes(_ request: HTTPRequest, accessProtection: MCPAccessProtection) -> Bool {
         guard let authorization = request.header(HTTPHeaderName.authorization) else {
             return false
         }
@@ -582,17 +589,6 @@ private enum BearerTokenAccessValidator {
         else {
             return false
         }
-        return constantTimeEquals(String(parts[1]), expectedToken)
-    }
-
-    private static func constantTimeEquals(_ lhs: String, _ rhs: String) -> Bool {
-        let left = Array(lhs.utf8)
-        let right = Array(rhs.utf8)
-        guard left.count == right.count else { return false }
-        var difference: UInt8 = 0
-        for index in left.indices {
-            difference |= left[index] ^ right[index]
-        }
-        return difference == 0
+        return accessProtection.matches(String(parts[1]))
     }
 }

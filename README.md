@@ -33,6 +33,8 @@ MCP is read-only by default: raw payloads and private data are redacted, and
 the bounded `axoloty_discover_objects` control requires `--enable-controls`.
 A non-loopback HTTP listener is always read-only and requires
 `--access-token-file PATH`; every request must then present that bearer token.
+The token file must be a regular file with no group/world permissions and at
+most 4 KiB of UTF-8 content.
 A listener with access protection is remote even on loopback, so controls stay
 unavailable behind a local reverse proxy. See `docs/services.md`.
 

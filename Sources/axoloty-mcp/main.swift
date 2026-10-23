@@ -5,6 +5,12 @@ import AxolotyInspectorCore
 import AxolotyDebug
 import Foundation
 
+#if canImport(Glibc)
+import Glibc
+#elseif canImport(Darwin)
+import Darwin
+#endif
+
 let args = Array(CommandLine.arguments.dropFirst())
 
 let helpText = """
@@ -182,7 +188,7 @@ var accessProtection: MCPAccessProtection?
 if let accessTokenPath {
     let token: String
     do {
-        token = try String(contentsOfFile: accessTokenPath, encoding: .utf8)
+        token = try readAccessToken(at: accessTokenPath)
     } catch {
         FileHandle.standardError.write(Data(
             "error: unable to read access token file: \(accessTokenPath)\n".utf8
@@ -211,6 +217,52 @@ let exitCode = await runMCPServer(
     accessProtection: accessProtection
 )
 Foundation.exit(exitCode)
+
+private enum AccessTokenFileError: Error {
+    case openFailed
+    case unsafeFile
+}
+
+private func readAccessToken(at path: String) throws(AccessTokenFileError) -> String {
+    let descriptor = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+    guard descriptor >= 0 else { throw .openFailed }
+    defer { _ = close(descriptor) }
+
+    var metadata = stat()
+    guard fstat(descriptor, &metadata) == 0 else { throw .unsafeFile }
+    let isRegularFile = metadata.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG)
+    let isPrivate = metadata.st_mode & 0o077 == 0
+    guard isRegularFile,
+        isPrivate,
+        metadata.st_size > 0,
+        metadata.st_size <= off_t(MCPAccessProtection.maximumTokenBytes)
+    else {
+        throw .unsafeFile
+    }
+
+    var bytes: [UInt8] = []
+    bytes.reserveCapacity(Int(metadata.st_size))
+    while bytes.count <= MCPAccessProtection.maximumTokenBytes {
+        let remaining = MCPAccessProtection.maximumTokenBytes + 1 - bytes.count
+        var buffer = [UInt8](repeating: 0, count: min(1_024, remaining))
+        let readCount = buffer.withUnsafeMutableBytes { bufferPointer in
+            read(descriptor, bufferPointer.baseAddress, bufferPointer.count)
+        }
+        if readCount < 0 {
+            if errno == EINTR { continue }
+            throw .unsafeFile
+        }
+        if readCount == 0 { break }
+        bytes.append(contentsOf: buffer.prefix(Int(readCount)))
+    }
+
+    guard bytes.count <= MCPAccessProtection.maximumTokenBytes,
+        let token = String(bytes: bytes, encoding: .utf8)
+    else {
+        throw .unsafeFile
+    }
+    return token
+}
 
 @MainActor
 func runMCPServer(

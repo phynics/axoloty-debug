@@ -116,4 +116,15 @@ func accessProtectionRequiresToken() {
     #expect(MCPAccessProtection(bearerToken: " \n\t") == nil)
     #expect(MCPAccessProtection(bearerToken: "two tokens") == nil)
     #expect(MCPAccessProtection(bearerToken: "  token-value\n")?.bearerToken == "token-value")
+    let maximumToken = String(repeating: "a", count: MCPAccessProtection.maximumTokenBytes)
+    let oversizedToken = String(repeating: "a", count: MCPAccessProtection.maximumTokenBytes + 1)
+    #expect(MCPAccessProtection(bearerToken: maximumToken) != nil)
+    #expect(MCPAccessProtection(bearerToken: oversizedToken) == nil)
+}
+
+@Test("localhost is bound to an explicit loopback address")
+func localhostUsesDeterministicLoopbackBinding() {
+    #expect(MCPHTTPServer.boundHost(for: "localhost") == "127.0.0.1")
+    #expect(MCPHTTPServer.boundHost(for: "127.0.0.1") == "127.0.0.1")
+    #expect(MCPHTTPServer.boundHost(for: "::1") == "::1")
 }

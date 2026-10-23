@@ -64,8 +64,9 @@ with a five-second deadline.
   `127.0.0.1:8765/mcp`. The managed service accepts only loopback bind
   addresses and has a ten-second readiness deadline. For a direct remote
   endpoint, run `axoloty-mcp` with `--access-token-file PATH`; the file holds a
-  long random bearer token that every request must present. A non-loopback
-  binding without that file is rejected.
+  long random bearer token that every request must present. The token file
+  must be a regular UTF-8 file no larger than 4 KiB with no group/world
+  permissions. A non-loopback binding without that file is rejected.
 
 Both transports accept `--broker-host`, `--broker-port`, and `--namespace` to
 connect to MQTT, plus `--connect-timeout`. HTTP also accepts `--listen-host`,
