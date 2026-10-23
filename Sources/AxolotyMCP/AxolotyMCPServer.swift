@@ -25,7 +25,7 @@ private func makeMCPPropertySchema(type: String, description: String) -> Value {
 public final class AxolotyMCPServer {
     private static let logger = Logger(label: "axoloty.mcp")
     private let server: Server
-    private let catalogueService: InspectorCatalogueService
+    let catalogueService: InspectorCatalogueService
     private let session: InspectorSession
     private let responseEncoder: ResponseEncoder
     private let encodingFailureLogger: EncodingFailureLogger
@@ -226,23 +226,38 @@ public final class AxolotyMCPServer {
 
     /// Starts the MCP server with Streamable HTTP transport.
     ///
-    /// Binds a loopback-only HTTP server that fronts the MCP SDK's
+    /// Binds an HTTP server that fronts the MCP SDK's
     /// ``MCP/StatefulHTTPServerTransport``. A new ``MCP/Server`` is created
     /// per session, all sharing the same broker-backed catalogue so concurrent
     /// clients observe the same live objects.
     ///
     /// - Parameters:
-    ///   - listenHost: Loopback bind address (`127.0.0.1`, `localhost`, `::1`).
+    ///   - listenHost: HTTP bind address. `localhost`, `127.0.0.1`, and `::1`
+    ///     are local; `localhost` is bound to `127.0.0.1` directly. Any other
+    ///     address is remote and requires `accessProtection`.
     ///   - listenPort: TCP port to bind.
     ///   - path: MCP endpoint path (defaults to `/mcp`).
+    ///   - accessProtection: Independent bearer-token protection. Required for
+    ///     a non-loopback `listenHost` and enforced on every request.
     /// - Throws: ``InspectorError`` if the broker connection fails,
-    ///   ``AxolotyError`` if `listenHost` is not loopback, or an `MCPError` if
-    ///   the HTTP server cannot start.
-    public func startHTTP(listenHost: String, listenPort: UInt16, path: String = "/mcp") async throws {
+    ///   ``AxolotyError`` if a remote `listenHost` has no access protection, or
+    ///   an `MCPError` if the HTTP server cannot start.
+    public func startHTTP(
+        listenHost: String,
+        listenPort: UInt16,
+        path: String = "/mcp",
+        accessProtection: MCPAccessProtection? = nil
+    ) async throws {
+        let listenerPolicy = MCPAccessPolicy.forHTTPListener(
+            host: listenHost,
+            requested: accessPolicy,
+            accessProtected: accessProtection != nil
+        )
         let httpServer = MCPHTTPServer(
             host: listenHost,
             port: listenPort,
             endpoint: path,
+            accessProtection: accessProtection,
             serverFactory: { _, transport in
                 let server = Server(
                     name: "axoloty-mcp",
@@ -252,7 +267,7 @@ public final class AxolotyMCPServer {
                         tools: .init(listChanged: false)
                     )
                 )
-                await self.registerHandlers(on: server)
+                await self.registerHandlers(on: server, policy: listenerPolicy)
                 try await server.start(transport: transport)
                 return server
             }
@@ -286,11 +301,11 @@ public final class AxolotyMCPServer {
 
     // MARK: - Handler registration
 
-    func registerHandlers(on server: Server) async {
+    func registerHandlers(on server: Server, policy override: MCPAccessPolicy? = nil) async {
         let service = catalogueService
 
         // List tools
-        let policy = accessPolicy
+        let policy = override ?? accessPolicy
         await server.withMethodHandler(ListTools.self) { _ in
             return .init(tools: Self.objectInputSchemaTools.filter { policy.allows(tool: $0.name) })
         }
@@ -305,9 +320,9 @@ public final class AxolotyMCPServer {
             }
             switch params.name {
             case "axoloty_list_objects":
-                return await self.handleListObjects(params.arguments, service: service)
+                return await self.handleListObjects(params.arguments, service: service, policy: policy)
             case "axoloty_get_object":
-                return await self.handleGetObject(params.arguments, service: service)
+                return await self.handleGetObject(params.arguments, service: service, policy: policy)
             case "axoloty_discover_objects":
                 return await self.handleDiscoverObjects(params.arguments)
             case "axoloty_decode_payload":
@@ -352,9 +367,13 @@ public final class AxolotyMCPServer {
 
     // MARK: - Tool handlers
 
-    private func handleListObjects(_ args: [String: Value]?, service: InspectorCatalogueService) async -> CallTool.Result {
+    private func handleListObjects(
+        _ args: [String: Value]?,
+        service: InspectorCatalogueService,
+        policy: MCPAccessPolicy
+    ) async -> CallTool.Result {
         let filter = Self.parseFilter(args)
-        let snapshot = accessPolicy.redact(await service.store.snapshot(filter: filter))
+        let snapshot = policy.redact(await service.store.snapshot(filter: filter))
         do {
             let json = try responseEncoder.snapshot(snapshot)
             return .init(content: [.text(json)], isError: false)
@@ -367,13 +386,17 @@ public final class AxolotyMCPServer {
         }
     }
 
-    private func handleGetObject(_ args: [String: Value]?, service: InspectorCatalogueService) async -> CallTool.Result {
+    private func handleGetObject(
+        _ args: [String: Value]?,
+        service: InspectorCatalogueService,
+        policy: MCPAccessPolicy
+    ) async -> CallTool.Result {
         guard let objectId = args?["objectId"]?.stringValue else {
             return .init(content: [.text("Missing required parameter: objectId")], isError: true)
         }
         if let object = await service.store.object(id: objectId) {
             do {
-                let json = try responseEncoder.object(accessPolicy.redact(object))
+                let json = try responseEncoder.object(policy.redact(object))
                 return .init(content: [.text(json)], isError: false)
             } catch {
                 return Self.encodingFailureResult(

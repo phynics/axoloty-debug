@@ -71,3 +71,60 @@ func localOperatorMayIncludePayloads() {
     let policy = MCPAccessPolicy(scope: .local, includePayloads: true)
     #expect(policy.redact(full) == full)
 }
+
+@Test("A non-loopback listener is always remote and read-only")
+func nonLoopbackListenerForcesRemotePolicy() {
+    let requested = MCPAccessPolicy(scope: .local, controlsEnabled: true, includePayloads: true)
+    let effective = MCPAccessPolicy.forHTTPListener(host: "0.0.0.0", requested: requested)
+
+    #expect(effective.scope == .remote)
+    #expect(!effective.controlsEnabled)
+    #expect(!effective.allows(tool: "axoloty_discover_objects"))
+    #expect(effective.redact(full).payload == nil)
+    #expect(MCPAccessPolicy.isLoopbackHost("127.0.0.1"))
+    #expect(MCPAccessPolicy.isLoopbackHost("localhost"))
+    #expect(MCPAccessPolicy.isLoopbackHost("::1"))
+    #expect(!MCPAccessPolicy.isLoopbackHost("0.0.0.0"))
+}
+
+@Test("A loopback listener keeps the requested policy")
+func loopbackListenerKeepsRequestedPolicy() {
+    let requested = MCPAccessPolicy(scope: .local, controlsEnabled: true, includePayloads: true)
+    let effective = MCPAccessPolicy.forHTTPListener(host: "127.0.0.1", requested: requested)
+
+    #expect(effective == requested)
+    #expect(effective.allows(tool: "axoloty_discover_objects"))
+}
+
+@Test("An access-protected loopback listener is remote read-only")
+func accessProtectedLoopbackIsRemote() {
+    let requested = MCPAccessPolicy(scope: .local, controlsEnabled: true, includePayloads: true)
+    let effective = MCPAccessPolicy.forHTTPListener(
+        host: "127.0.0.1",
+        requested: requested,
+        accessProtected: true
+    )
+
+    #expect(effective.scope == .remote)
+    #expect(!effective.allows(tool: "axoloty_discover_objects"))
+    #expect(effective.redact(full).payload == nil)
+}
+
+@Test("Access protection rejects empty and whitespace tokens")
+func accessProtectionRequiresToken() {
+    #expect(MCPAccessProtection(bearerToken: "") == nil)
+    #expect(MCPAccessProtection(bearerToken: " \n\t") == nil)
+    #expect(MCPAccessProtection(bearerToken: "two tokens") == nil)
+    #expect(MCPAccessProtection(bearerToken: "  token-value\n")?.bearerToken == "token-value")
+    let maximumToken = String(repeating: "a", count: MCPAccessProtection.maximumTokenBytes)
+    let oversizedToken = String(repeating: "a", count: MCPAccessProtection.maximumTokenBytes + 1)
+    #expect(MCPAccessProtection(bearerToken: maximumToken) != nil)
+    #expect(MCPAccessProtection(bearerToken: oversizedToken) == nil)
+}
+
+@Test("localhost is bound to an explicit loopback address")
+func localhostUsesDeterministicLoopbackBinding() {
+    #expect(MCPHTTPServer.boundHost(for: "localhost") == "127.0.0.1")
+    #expect(MCPHTTPServer.boundHost(for: "127.0.0.1") == "127.0.0.1")
+    #expect(MCPHTTPServer.boundHost(for: "::1") == "::1")
+}

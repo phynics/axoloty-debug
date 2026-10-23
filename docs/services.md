@@ -61,8 +61,12 @@ with a five-second deadline.
   listener. Do not write diagnostics to standard output.
 - `--transport http` serves Streamable HTTP at
   `--listen-host`/`--listen-port`/`--path`, defaulting to
-  `127.0.0.1:8765/mcp`. HTTP binds only to loopback and has a ten-second
-  readiness deadline.
+  `127.0.0.1:8765/mcp`. The managed service accepts only loopback bind
+  addresses and has a ten-second readiness deadline. For a direct remote
+  endpoint, run `axoloty-mcp` with `--access-token-file PATH`; the file holds a
+  long random bearer token that every request must present. The token file
+  must be a regular UTF-8 file no larger than 4 KiB with no group/world
+  permissions. A non-loopback binding without that file is rejected.
 
 Both transports accept `--broker-host`, `--broker-port`, and `--namespace` to
 connect to MQTT, plus `--connect-timeout`. HTTP also accepts `--listen-host`,
@@ -79,8 +83,16 @@ The server exposes the read-only resources `axoloty://status` and
 
 The catalogue is deliberately incomplete: it contains only objects advertised
 after the observer connected. The server offers no arbitrary MQTT publish or
-subscribe operation. Keep HTTP loopback-only; expose it remotely only through
-an authenticated, deliberately configured proxy.
+subscribe operation.
+
+MCP access is read-only by default. `axoloty_discover_objects` is a bounded
+control and requires `--enable-controls`; raw object payloads and private data
+require `--include-payloads`. Both flags are local-only. A remote endpoint, and
+any listener with independent access protection, always uses the remote
+read-only policy: controls and payloads stay unavailable even when such a flag
+is present, and the executable rejects that combination. Remote deployments
+must add their own transport protection, such as TLS at a reverse proxy, in
+addition to the bearer token.
 
 ## Development stack
 

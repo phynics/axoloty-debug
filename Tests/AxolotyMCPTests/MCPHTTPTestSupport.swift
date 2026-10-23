@@ -110,7 +110,8 @@ func sendHTTPBody(
     to port: Int,
     body: Data,
     streamed: Bool = false,
-    sessionID: String? = nil
+    sessionID: String? = nil,
+    bearerToken: String? = nil
 ) async throws -> (Data, HTTPURLResponse) {
     var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/mcp")!)
     request.httpMethod = "POST"
@@ -119,6 +120,9 @@ func sendHTTPBody(
     request.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
     if let sessionID {
         request.setValue(sessionID, forHTTPHeaderField: "MCP-Session-Id")
+    }
+    if let bearerToken {
+        request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
     }
 
     if streamed {
