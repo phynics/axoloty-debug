@@ -21,9 +21,11 @@ import MCP
 /// per session via ``serverFactory``; sessions are addressed by the
 /// `MCP-Session-Id` header.
 ///
-/// Only loopback hosts (`127.0.0.1`, `localhost`, `::1`) are accepted to keep
-/// the inspector reachable solely from the local machine. DNS-rebinding
-/// protection is provided by ``MCP/OriginValidator`` scoped to ``localhost(port:)``.
+/// A loopback host (`127.0.0.1`, `localhost`, `::1`) needs no extra protection
+/// and uses ``MCP/OriginValidator`` scoped to ``localhost(port:)``. Any other
+/// bind address is remote: it requires ``MCPAccessProtection`` and its bearer
+/// token is checked before the MCP transport sees the request. DNS-rebinding
+/// protection is the responsibility of the protected remote deployment.
 public actor MCPHTTPServer {
     /// Creates a new ``MCP/Server`` for an incoming session and starts it on
     /// the supplied transport.
@@ -39,6 +41,7 @@ public actor MCPHTTPServer {
     private let port: UInt16
     private let endpoint: String
     private let maxRequestBodyBytes: Int
+    private let accessProtection: MCPAccessProtection?
     private let serverFactory: ServerFactory
     private let validationPipeline: any HTTPRequestValidationPipeline?
     private var eventLoopGroup: MultiThreadedEventLoopGroup?
@@ -67,7 +70,10 @@ public actor MCPHTTPServer {
     ///     transport.
     ///   - validationPipeline: Custom validation pipeline forwarded to each
     ///     transport. If `nil`, a default pipeline scoped to
-    ///     ``MCP/OriginValidator``.`localhost(port:)` is used.
+    ///     ``MCP/OriginValidator``.`localhost(port:)` is used for loopback and
+    ///     a bearer-token check comes first for ``accessProtection``.
+    ///   - accessProtection: Independent bearer-token protection. Required for
+    ///     any non-loopback bind address and enforced for every request.
     ///   - serverFactory: Factory invoked once per session to create and start
     ///     a ``MCP/Server`` on the freshly minted transport.
     public init(
@@ -76,28 +82,30 @@ public actor MCPHTTPServer {
         endpoint: String = "/mcp",
         maxRequestBodyBytes: Int = 1_048_576,
         validationPipeline: any HTTPRequestValidationPipeline? = nil,
+        accessProtection: MCPAccessProtection? = nil,
         serverFactory: @escaping ServerFactory
     ) {
         self.host = host
         self.port = port
         self.endpoint = endpoint
         self.maxRequestBodyBytes = max(0, maxRequestBodyBytes)
-        self.serverFactory = serverFactory
         self.validationPipeline = validationPipeline
+        self.accessProtection = accessProtection
+        self.serverFactory = serverFactory
     }
 
     /// Starts the HTTP server and blocks until the server channel closes.
     ///
-    /// - Throws: ``AxolotyError`` if `host` is not a loopback address, or a
-    ///   NIO error if the channel cannot be bound.
+    /// - Throws: ``AxolotyError`` if `host` is non-loopback without
+    ///   ``accessProtection``, or a NIO error if the channel cannot be bound.
     public func start() async throws {
         defer {
             await stop()
         }
-        guard Self.isLoopback(host) else {
+        guard MCPAccessPolicy.isLoopbackHost(host) || accessProtection != nil else {
             throw AxolotyError.invalidConfiguration(
-                option: "host",
-                reason: "MCP HTTP server only accepts loopback hosts (127.0.0.1, localhost, ::1); got '\(host)'"
+                option: "accessProtection",
+                reason: "non-loopback HTTP binding '\(host)' requires independent bearer-token access protection"
             )
         }
 
@@ -183,12 +191,17 @@ public actor MCPHTTPServer {
 
     // MARK: - Request Routing
 
-    private static func isLoopback(_ host: String) -> Bool {
-        host == "127.0.0.1" || host == "localhost" || host == "::1"
-    }
-
     /// Routes an incoming HTTP request to the appropriate session transport.
     func handleHTTPRequest(_ request: HTTPRequest) async -> HTTPResponse {
+        if let accessProtection,
+            !BearerTokenAccessValidator.authorizes(
+                request,
+                expectedToken: accessProtection.bearerToken
+            )
+        {
+            return BearerTokenAccessValidator.unauthorized
+        }
+
         let sessionID = request.header(HTTPHeaderName.sessionID)
 
         if let sessionID, var session = sessions[sessionID] {
@@ -244,16 +257,23 @@ public actor MCPHTTPServer {
         func generateSessionID() -> String { sessionID }
     }
 
-    private func createSessionAndHandle(_ request: HTTPRequest) async -> HTTPResponse {
-        let sessionID = UUID().uuidString
-
-        let pipeline = validationPipeline ?? StandardValidationPipeline(validators: [
-            OriginValidator.localhost(port: Int(port)),
+    private func makeDefaultPipeline() -> StandardValidationPipeline {
+        let boundPort = channel?.localAddress?.port ?? Int(port)
+        return StandardValidationPipeline(validators: [
+            MCPAccessPolicy.isLoopbackHost(host)
+                ? OriginValidator.localhost(port: boundPort)
+                : OriginValidator.disabled,
             AcceptHeaderValidator(mode: .sseRequired),
             ContentTypeValidator(),
             ProtocolVersionValidator(),
             SessionValidator(),
         ])
+    }
+
+    private func createSessionAndHandle(_ request: HTTPRequest) async -> HTTPResponse {
+        let sessionID = UUID().uuidString
+
+        let pipeline = validationPipeline ?? makeDefaultPipeline()
 
         let transport = StatefulHTTPServerTransport(
             sessionIDGenerator: FixedSessionIDGenerator(sessionID: sessionID),
@@ -534,4 +554,45 @@ private final class HTTPHandler: ChannelInboundHandler, @unchecked Sendable {
 extension MCPHTTPServer {
     /// Exposes the configured endpoint path to the NIO handler.
     fileprivate func endpointPath() -> String { endpoint }
+}
+
+// MARK: - Bearer token access protection
+
+/// Checks the configured bearer token before the MCP transport sees a request.
+private enum BearerTokenAccessValidator {
+    static var unauthorized: HTTPResponse {
+        .error(
+            statusCode: 401,
+            .invalidRequest("Unauthorized"),
+            extraHeaders: [HTTPHeaderName.wwwAuthenticate: "Bearer"]
+        )
+    }
+
+    static func authorizes(_ request: HTTPRequest, expectedToken: String) -> Bool {
+        guard let authorization = request.header(HTTPHeaderName.authorization) else {
+            return false
+        }
+        let parts = authorization.split(
+            separator: " ",
+            maxSplits: 1,
+            omittingEmptySubsequences: true
+        )
+        guard parts.count == 2,
+            parts[0].caseInsensitiveCompare("Bearer") == .orderedSame
+        else {
+            return false
+        }
+        return constantTimeEquals(String(parts[1]), expectedToken)
+    }
+
+    private static func constantTimeEquals(_ lhs: String, _ rhs: String) -> Bool {
+        let left = Array(lhs.utf8)
+        let right = Array(rhs.utf8)
+        guard left.count == right.count else { return false }
+        var difference: UInt8 = 0
+        for index in left.indices {
+            difference |= left[index] ^ right[index]
+        }
+        return difference == 0
+    }
 }

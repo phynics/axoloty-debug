@@ -232,17 +232,31 @@ public final class AxolotyMCPServer {
     /// clients observe the same live objects.
     ///
     /// - Parameters:
-    ///   - listenHost: Loopback bind address (`127.0.0.1`, `localhost`, `::1`).
+    ///   - listenHost: HTTP bind address. A loopback address is local; any
+    ///     other address is remote and requires `accessProtection`.
     ///   - listenPort: TCP port to bind.
     ///   - path: MCP endpoint path (defaults to `/mcp`).
+    ///   - accessProtection: Independent bearer-token protection. Required for
+    ///     a non-loopback `listenHost` and enforced on every request.
     /// - Throws: ``InspectorError`` if the broker connection fails,
-    ///   ``AxolotyError`` if `listenHost` is not loopback, or an `MCPError` if
-    ///   the HTTP server cannot start.
-    public func startHTTP(listenHost: String, listenPort: UInt16, path: String = "/mcp") async throws {
+    ///   ``AxolotyError`` if a remote `listenHost` has no access protection, or
+    ///   an `MCPError` if the HTTP server cannot start.
+    public func startHTTP(
+        listenHost: String,
+        listenPort: UInt16,
+        path: String = "/mcp",
+        accessProtection: MCPAccessProtection? = nil
+    ) async throws {
+        let listenerPolicy = MCPAccessPolicy.forHTTPListener(
+            host: listenHost,
+            requested: accessPolicy,
+            accessProtected: accessProtection != nil
+        )
         let httpServer = MCPHTTPServer(
             host: listenHost,
             port: listenPort,
             endpoint: path,
+            accessProtection: accessProtection,
             serverFactory: { _, transport in
                 let server = Server(
                     name: "axoloty-mcp",
@@ -252,7 +266,7 @@ public final class AxolotyMCPServer {
                         tools: .init(listChanged: false)
                     )
                 )
-                await self.registerHandlers(on: server)
+                await self.registerHandlers(on: server, policy: listenerPolicy)
                 try await server.start(transport: transport)
                 return server
             }
@@ -286,11 +300,11 @@ public final class AxolotyMCPServer {
 
     // MARK: - Handler registration
 
-    func registerHandlers(on server: Server) async {
+    func registerHandlers(on server: Server, policy override: MCPAccessPolicy? = nil) async {
         let service = catalogueService
 
         // List tools
-        let policy = accessPolicy
+        let policy = override ?? accessPolicy
         await server.withMethodHandler(ListTools.self) { _ in
             return .init(tools: Self.objectInputSchemaTools.filter { policy.allows(tool: $0.name) })
         }

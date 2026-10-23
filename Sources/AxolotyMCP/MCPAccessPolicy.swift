@@ -55,6 +55,39 @@ public struct MCPAccessPolicy: Sendable, Equatable {
     /// The default policy: local, read-only, redacting.
     public static let localReadOnly = MCPAccessPolicy()
 
+    /// Returns the policy that applies to an MCP HTTP listener.
+    ///
+    /// A loopback listener without independent access protection keeps
+    /// `requested`. Any other bind address, and any listener with access
+    /// protection, is remote: controls and raw payloads are forcibly disabled
+    /// even when `requested` enabled them.
+    ///
+    /// - Parameters:
+    ///   - host: The HTTP bind address.
+    ///   - requested: The policy requested by the local operator.
+    ///   - accessProtected: Whether the listener requires independent
+    ///     authentication. A protected listener is remote even on loopback,
+    ///     which covers a local reverse proxy.
+    /// - Returns: The effective listener policy.
+    public static func forHTTPListener(
+        host: String,
+        requested: MCPAccessPolicy = .localReadOnly,
+        accessProtected: Bool = false
+    ) -> MCPAccessPolicy {
+        guard isLoopbackHost(host), !accessProtected else {
+            return MCPAccessPolicy(scope: .remote)
+        }
+        return requested
+    }
+
+    /// Whether an HTTP bind address reaches only the local machine.
+    ///
+    /// - Parameter host: The HTTP bind address.
+    /// - Returns: `true` for `127.0.0.1`, `localhost`, and `::1`.
+    public static func isLoopbackHost(_ host: String) -> Bool {
+        host == "127.0.0.1" || host == "localhost" || host == "::1"
+    }
+
     /// Whether a tool may be listed and called.
     ///
     /// Unknown tools are not allowed.

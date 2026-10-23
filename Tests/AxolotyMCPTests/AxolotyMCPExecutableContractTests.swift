@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Atakan DULKER. Licensed under the MIT License.
 
 import AxolotyDebug
+import Foundation
 import Testing
 
 @Test("MCP executable rejects invalid broker port")
@@ -129,4 +130,69 @@ func executableCLIOverridesInvalidEnvironmentPort() throws {
     #expect(result.exitCode == 64)
     #expect(result.standardError.contains("unknown transport"))
     #expect(!result.standardError.contains("invalid broker port"))
+}
+
+@Test("MCP executable requires an access token for a non-loopback HTTP binding")
+func executableRequiresTokenForRemoteBinding() throws {
+    let result = try runMCPExecutable(
+        arguments: ["--transport", "http", "--listen-host", "0.0.0.0"]
+    )
+
+    #expect(result.exitCode == 64)
+    #expect(result.standardError.contains("non-loopback HTTP binding requires --access-token-file"))
+}
+
+@Test("MCP executable rejects local controls on a remote binding")
+func executableRejectsControlsOnRemoteBinding() throws {
+    let tokenFile = try writeAccessToken("remote-token")
+    defer { try? FileManager.default.removeItem(at: tokenFile) }
+
+    let result = try runMCPExecutable(arguments: [
+        "--transport", "http",
+        "--listen-host", "0.0.0.0",
+        "--enable-controls",
+        "--access-token-file", tokenFile.path,
+    ])
+
+    #expect(result.exitCode == 64)
+    #expect(result.standardError.contains("remote HTTP binding is always read-only"))
+}
+
+@Test("MCP executable rejects access tokens without HTTP")
+func executableRejectsAccessTokenWithoutHTTP() throws {
+    let tokenFile = try writeAccessToken("stdio-token")
+    defer { try? FileManager.default.removeItem(at: tokenFile) }
+
+    let result = try runMCPExecutable(arguments: [
+        "--access-token-file", tokenFile.path,
+    ])
+
+    #expect(result.exitCode == 64)
+    #expect(result.standardError.contains("--access-token-file is only valid with --transport http"))
+}
+
+@Test("MCP executable rejects an unreadable or empty access token file")
+func executableRejectsInvalidAccessTokenFile() throws {
+    let missing = try runMCPExecutable(arguments: [
+        "--transport", "http",
+        "--access-token-file", "/nonexistent/axoloty-mcp-token",
+    ])
+    #expect(missing.exitCode == 64)
+    #expect(missing.standardError.contains("unable to read access token file"))
+
+    let emptyFile = try writeAccessToken("\n\t")
+    defer { try? FileManager.default.removeItem(at: emptyFile) }
+    let empty = try runMCPExecutable(arguments: [
+        "--transport", "http",
+        "--access-token-file", emptyFile.path,
+    ])
+    #expect(empty.exitCode == 64)
+    #expect(empty.standardError.contains("access token file is empty or contains invalid whitespace"))
+}
+
+private func writeAccessToken(_ contents: String) throws -> URL {
+    let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("axoloty-mcp-token-\(UUID().uuidString)")
+    try Data(contents.utf8).write(to: url)
+    return url
 }
