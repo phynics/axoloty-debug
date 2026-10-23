@@ -5,6 +5,10 @@ import Foundation
 import MCP
 import Testing
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 @Test("A non-loopback HTTP listener requires independent access protection")
 func nonLoopbackListenerRequiresAccessProtection() async {
     let server = MCPHTTPServer(
