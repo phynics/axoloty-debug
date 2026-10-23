@@ -38,7 +38,7 @@ func remoteHTTPSessionsRequireTokenAndRejectControls() async throws {
     let session = StatusSession()
     let mcpServer = AxolotyMCPServer(session: session, namespace: "test")
     let httpServer = MCPHTTPServer(
-        host: "127.0.0.1",
+        host: "0.0.0.0",
         port: 0,
         accessProtection: protection,
         serverFactory: { _, transport in
@@ -75,13 +75,18 @@ func remoteHTTPSessionsRequireTokenAndRejectControls() async throws {
         )
         #expect(wrongToken.statusCode == 401)
 
-        let (_, authenticated) = try await sendHTTPBody(
+        let (initializeData, authenticated) = try await sendHTTPBody(
             to: port,
             body: initializeBody,
             bearerToken: token
         )
         #expect(authenticated.statusCode == 200)
-        let sessionID = try #require(authenticated.value(forHTTPHeaderField: "MCP-Session-Id"))
+        #expect(authenticated.value(forHTTPHeaderField: "Content-Type") == "text/event-stream")
+        let sessionID = try #require(authenticated.value(forHTTPHeaderField: "Mcp-Session-Id"))
+        try requireResponseBody(initializeData, response: authenticated, operation: "initialize")
+        let initializeMessage = try jsonMessage(from: initializeData)
+        let initializeResult = try #require(initializeMessage["result"] as? [String: Any])
+        #expect(initializeResult["protocolVersion"] as? String == "2025-11-25")
 
         let listBody = try JSONSerialization.data(withJSONObject: [
             "jsonrpc": "2.0",
@@ -96,6 +101,7 @@ func remoteHTTPSessionsRequireTokenAndRejectControls() async throws {
             bearerToken: token
         )
         #expect(listResponse.statusCode == 200)
+        try requireResponseBody(listData, response: listResponse, operation: "tools/list")
         let listMessage = try jsonMessage(from: listData)
         let listResult = try #require(listMessage["result"] as? [String: Any])
         let tools = try #require(listResult["tools"] as? [[String: Any]])
@@ -119,6 +125,7 @@ func remoteHTTPSessionsRequireTokenAndRejectControls() async throws {
             bearerToken: token
         )
         #expect(callResponse.statusCode == 200)
+        try requireResponseBody(callData, response: callResponse, operation: "tools/call")
         let callMessage = try jsonMessage(from: callData)
         let callResult = try #require(callMessage["result"] as? [String: Any])
         #expect(callResult["isError"] as? Bool == true)
@@ -139,6 +146,17 @@ func remoteHTTPSessionsRequireTokenAndRejectControls() async throws {
         startTask: startTask,
         phase: "remote access shutdown"
     )
+}
+
+private func requireResponseBody(
+    _ data: Data,
+    response: HTTPURLResponse,
+    operation: String
+) throws {
+    let contentType = response.value(forHTTPHeaderField: "Content-Type") ?? "missing"
+    let sessionID = response.value(forHTTPHeaderField: "Mcp-Session-Id") ?? "missing"
+    let message = "\(operation) response was empty: status=\(response.statusCode), contentType=\(contentType), session=\(sessionID)"
+    try #require(!data.isEmpty, message)
 }
 
 private func jsonMessage(from data: Data) throws -> [String: Any] {
