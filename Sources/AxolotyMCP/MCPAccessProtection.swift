@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Atakan DULKER. Licensed under the MIT License.
 
+import Crypto
 import Foundation
 
 /// Independent access protection for an MCP HTTP listener.
@@ -15,8 +16,7 @@ public struct MCPAccessProtection: Sendable, Equatable {
 
     /// The bearer token every HTTP request must present.
     public let bearerToken: String
-    private let comparisonBytes: [UInt8]
-    private let tokenLength: Int
+    private let comparisonKeyBytes: [UInt8]
 
     /// Creates access protection for a bearer token.
     ///
@@ -35,21 +35,34 @@ public struct MCPAccessProtection: Sendable, Equatable {
         }
         self.bearerToken = token
         let bytes = Array(token.utf8)
-        var fixedBytes = [UInt8](repeating: 0, count: Self.maximumTokenBytes)
-        fixedBytes.replaceSubrange(0..<bytes.count, with: bytes)
-        self.comparisonBytes = fixedBytes
-        self.tokenLength = bytes.count
+        self.comparisonKeyBytes = Self.fixedComparisonKeyBytes(bytes)
     }
 
     func matches(_ candidate: String) -> Bool {
         let bytes = Array(candidate.utf8)
         guard bytes.count <= Self.maximumTokenBytes else { return false }
-        var fixedBytes = [UInt8](repeating: 0, count: Self.maximumTokenBytes)
-        fixedBytes.replaceSubrange(0..<bytes.count, with: bytes)
-        var difference = UInt64(bytes.count ^ tokenLength)
-        for index in 0..<Self.maximumTokenBytes {
-            difference |= UInt64(fixedBytes[index] ^ comparisonBytes[index])
+        let candidateKeyBytes = Self.fixedComparisonKeyBytes(bytes)
+        let challenge = Data(repeating: 0, count: MemoryLayout<UInt64>.size)
+        let candidateCode = HMAC<SHA256>.authenticationCode(
+            for: challenge,
+            using: SymmetricKey(data: Data(candidateKeyBytes))
+        )
+        // Swift Crypto verifies fixed-size HMAC codes with its constant-time comparison.
+        return HMAC<SHA256>.isValidAuthenticationCode(
+            candidateCode,
+            authenticating: challenge,
+            using: SymmetricKey(data: Data(comparisonKeyBytes))
+        )
+    }
+
+    private static func fixedComparisonKeyBytes(_ tokenBytes: [UInt8]) -> [UInt8] {
+        var keyBytes = [UInt8](repeating: 0, count: MemoryLayout<UInt64>.size + maximumTokenBytes)
+        var tokenLength = UInt64(tokenBytes.count).bigEndian
+        withUnsafeBytes(of: &tokenLength) { lengthBytes in
+            keyBytes.replaceSubrange(0..<lengthBytes.count, with: lengthBytes)
         }
-        return difference == 0
+        let tokenStart = MemoryLayout<UInt64>.size
+        keyBytes.replaceSubrange(tokenStart..<(tokenStart + tokenBytes.count), with: tokenBytes)
+        return keyBytes
     }
 }

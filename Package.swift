@@ -41,6 +41,7 @@ let package = Package(
         // development override via AXOLOTY_LOCAL_CORE_PATH / AXOLOTY_CORE_PATH.
         coreDependency,
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", exact: "0.12.1"),
+        .package(url: "https://github.com/apple/swift-crypto.git", exact: "3.15.1"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.14.0"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.101.2"),
     ],
@@ -101,6 +102,7 @@ let package = Package(
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),
+                .product(name: "Crypto", package: "swift-crypto"),
             ],
             path: "Sources/AxolotyMCP"
         ),
