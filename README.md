@@ -70,9 +70,9 @@ COPY --from=ghcr.io/phynics/axoloty-debug:X.Y.Z /usr/local/bin/axoloty-debug /us
 
 ## Dependency Configuration & Local Core Overrides
 
-By default, this branch pins the Axoloty Core commit that provides the public
-bounded diagnostic API consumed here:
-- `https://github.com/phynics/axoloty.git` (`a231be97c3e7f59180db27d14543de2e549c09c9`, merged as Core PR #1048)
+By default, this package requires Axoloty Core `0.10.0..<0.11.0` from
+`https://github.com/phynics/axoloty.git`. `Package.resolved` records Core
+`0.10.0` at revision `087bd9bb1bfb563d0347799245ea4dd43e509bc9`.
 
 ### Local Development Override
 
@@ -84,7 +84,7 @@ swift build
 swift test
 ```
 
-When unset or empty, SPM resolves the pinned Core commit from GitHub without requiring a sibling checkout layout.
+When unset or empty, Swift Package Manager resolves the versioned Core dependency from GitHub without requiring a sibling checkout layout.
 
 ## Platform Support
 
