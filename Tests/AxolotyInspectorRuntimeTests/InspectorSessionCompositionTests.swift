@@ -11,16 +11,20 @@ import Testing
 
 /// A transport that accepts everything and reaches no network.
 private actor StubTransport: AxolotyRuntimeTransport {
+    nonisolated let capabilities: RuntimeTransportCapabilities = []
     private(set) var started = false
     private var receive: (@Sendable (RuntimeInboundFrame) -> Void)?
 
-    func start(receive: @escaping @Sendable (RuntimeInboundFrame) -> Void) async throws {
+    func start(
+        receive: @escaping @Sendable (RuntimeInboundFrame) -> Void,
+        lastWill: RuntimeTransportLastWill?
+    ) async throws(AxolotyError) {
         self.receive = receive
         started = true
     }
 
     func setFailureHandler(_ handler: @escaping @Sendable (RuntimeTransportFailure) -> Void) async {}
-    func perform(_ effect: RuntimeTransportEffect) async throws {}
+    func perform(_ effect: RuntimeTransportEffect) async throws(AxolotyError) {}
     func stop() async { receive = nil }
 
     func deliver(_ frame: RuntimeInboundFrame) {

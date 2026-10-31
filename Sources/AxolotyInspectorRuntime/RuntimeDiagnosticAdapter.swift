@@ -53,8 +53,8 @@ enum RuntimeDiagnosticAdapter {
                 family: .presence,
                 label: "presenceSnapshot",
                 attributes: [
-                    "sourceID": presence.sourceID.map(CoatyRoute.uuidString) ?? "",
-                    "objectID": presence.objectID.map(CoatyRoute.uuidString) ?? "",
+                    "sourceID": presence.sourceID.map(InspectorUUID.string) ?? "",
+                    "objectID": presence.objectID.map(InspectorUUID.string) ?? "",
                     "evidence": String(describing: presence.evidence),
                     "activeObjects": String(presence.activeObjects),
                     "generation": String(presence.generation),
@@ -100,15 +100,15 @@ enum RuntimeDiagnosticAdapter {
             family = .request
             attributes = [
                 "capability": observation.capability.map(String.init(describing:)) ?? "unknown",
-                "correlationID": observation.correlationID.map(CoatyRoute.uuidString) ?? "",
+                "correlationID": observation.correlationID.map(InspectorUUID.string) ?? "",
                 "outcome": String(describing: observation.outcome),
                 "rejection": observation.rejection.map(String.init(describing:)) ?? "",
             ]
         case let .presence(observation):
             family = .presence
             attributes = [
-                "sourceID": observation.sourceID.map(CoatyRoute.uuidString) ?? "",
-                "objectID": observation.objectID.map(CoatyRoute.uuidString) ?? "",
+                "sourceID": observation.sourceID.map(InspectorUUID.string) ?? "",
+                "objectID": observation.objectID.map(InspectorUUID.string) ?? "",
                 "evidence": String(describing: observation.evidence),
                 "activeObjects": String(observation.activeObjects),
                 "generation": String(observation.generation),
