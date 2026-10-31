@@ -356,7 +356,7 @@ public final class AxolotyInspectorSession: InspectorSession {
         guard let root = jsonObject(event.value),
               let object = objectPayload(root["object"] as? [String: Any]) else { return nil }
         return InspectorAdvertiseEvent(
-            sourceId: CoatyRoute.uuidString(event.context.sourceID),
+            sourceId: InspectorUUID.string(event.context.sourceID),
             eventTypeFilter: nil,
             object: object,
             privateData: jsonString(root["privateData"])
@@ -365,14 +365,14 @@ public final class AxolotyInspectorSession: InspectorSession {
 
     private static func deadvertise(from event: RuntimeEventValue) -> InspectorDeadvertiseEvent? {
         guard let values = try? JSONSerialization.jsonObject(with: Data(event.value)) as? [String] else { return nil }
-        return InspectorDeadvertiseEvent(sourceId: CoatyRoute.uuidString(event.context.sourceID), objectIds: values)
+        return InspectorDeadvertiseEvent(sourceId: InspectorUUID.string(event.context.sourceID), objectIds: values)
     }
 
     nonisolated private static func response(from event: RuntimeEventValue) -> InspectorResponseEvent {
         InspectorResponseEvent(
             eventType: eventFamilyName(event.family),
-            sourceId: CoatyRoute.uuidString(event.context.sourceID),
-            correlationId: event.context.correlationID.map(CoatyRoute.uuidString),
+            sourceId: InspectorUUID.string(event.context.sourceID),
+            correlationId: event.context.correlationID.map(InspectorUUID.string),
             payload: String(decoding: event.value, as: UTF8.self)
         )
     }
