@@ -2,6 +2,7 @@
 
 import AxolotyInspectorCore
 import Foundation
+import AxolotyVersion
 import Testing
 
 @Suite
@@ -24,7 +25,7 @@ struct InspectorArgumentParserTests {
     func versionFlagReturnsVersion() {
         let outcome = InspectorArgumentParser().parse(["--version"])
         #expect(outcome == .version)
-        #expect(InspectorArgumentParser.version == "0.1.0")
+        #expect(InspectorArgumentParser.version == AxolotyVersion.releasedVersion)
     }
 
     @Test
