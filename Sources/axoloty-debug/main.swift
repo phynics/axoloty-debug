@@ -32,7 +32,8 @@ guard arguments.first == "serve" else {
 let session = AxolotyServeSession(
     executableName: "axoloty-debug",
     environment: ProcessInfo.processInfo.environment,
-    installSignalHandler: true
+    installSignalHandler: true,
+    executableDirectory: Bundle.main.executableURL?.deletingLastPathComponent().path
 )
 
 let result = session.run(arguments: Array(arguments.dropFirst()))
