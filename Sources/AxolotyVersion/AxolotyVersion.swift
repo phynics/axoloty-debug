@@ -10,11 +10,21 @@ public enum AxolotyVersion {
     /// calling file happens to sit.
     private static let resolverPath = #filePath
 
-    /// Reads an explicit process value or the checkout's root `VERSION` file.
+    /// The version compiled into this build.
     ///
-    /// The source-path fallback is intentionally limited to first-party
-    /// tooling. Published library consumers never need to discover a checkout
-    /// version at runtime. Pass `sourcePath` to resolve from another location.
+    /// Release binaries run on machines that have no checkout, so the root
+    /// `VERSION` file is not reachable at run time. Keep this value equal to
+    /// `VERSION`; `AxolotyVersionTests` fails when they differ.
+    public static let releasedVersion = "0.1.0"
+
+    /// Reads an explicit process value, the checkout's root `VERSION` file, or
+    /// the compiled-in ``releasedVersion``.
+    ///
+    /// The source-path lookup is intentionally limited to first-party
+    /// tooling and wins over the compiled-in value so a checkout that has
+    /// bumped `VERSION` reports it immediately. Published library consumers
+    /// never need to discover a checkout version at runtime. Pass `sourcePath`
+    /// to resolve from another location.
     public static func current(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         sourcePath: String? = nil
@@ -22,7 +32,7 @@ public enum AxolotyVersion {
         if let value = environment["AXOLOTY_VERSION"]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty {
             return value
         }
-        return checkoutVersion(near: sourcePath ?? resolverPath) ?? "unavailable"
+        return checkoutVersion(near: sourcePath ?? resolverPath) ?? releasedVersion
     }
 
     /// Walks up from `sourcePath` to the first directory holding a `VERSION`

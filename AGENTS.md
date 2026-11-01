@@ -80,8 +80,9 @@ CI builds and tests `axoloty-debug` standalone on Linux without requiring a sibl
 
 ## Releases
 
-`VERSION` is the single source of truth. To release, set `VERSION` to the new
-semantic version, tag `vX.Y.Z`, and push the tag. The release workflow verifies
+`VERSION` is the single source of truth. To release, set `VERSION` and
+`AxolotyVersion.releasedVersion` (compiled into the binaries; a test fails if
+they differ) to the new semantic version, tag `vX.Y.Z`, and push the tag. The release workflow verifies
 that `VERSION` matches the tag before creating the GitHub release.
 
 ## Source conventions
