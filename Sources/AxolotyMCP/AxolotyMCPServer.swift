@@ -215,13 +215,21 @@ public final class AxolotyMCPServer {
     /// stdin and stdout are reserved for MCP protocol messages.
     /// All diagnostics go to stderr.
     ///
+    /// The call returns only after the transport closes, for example when the
+    /// client closes standard input. The executable exits when this method
+    /// returns, so returning earlier would end the process before it served a
+    /// single request.
+    ///
+    /// - Parameter transport: The message transport. Defaults to standard
+    ///   input and output; tests inject an in-memory transport.
     /// - Throws: ``InspectorError`` if the broker connection fails, or an
     ///   `MCPError` if the transport cannot be established.
-    public func startStdio() async throws {
+    public func startStdio(transport: any Transport = StdioTransport()) async throws {
         try await catalogueService.start()
         await registerHandlers(on: server)
-        let transport = StdioTransport()
         try await server.start(transport: transport)
+        await server.waitUntilCompleted()
+        await catalogueService.stop()
     }
 
     /// Starts the MCP server with Streamable HTTP transport.
