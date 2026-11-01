@@ -70,9 +70,9 @@ COPY --from=ghcr.io/phynics/axoloty-debug:X.Y.Z /usr/local/bin/axoloty-debug /us
 
 ## Dependency Configuration & Local Core Overrides
 
-By default, this package requires Axoloty Core `0.10.0..<0.11.0` from
+By default, this package requires Axoloty Core `1.0.0..<2.0.0` from
 `https://github.com/phynics/axoloty.git`. `Package.resolved` records Core
-`0.10.0` at revision `087bd9bb1bfb563d0347799245ea4dd43e509bc9`.
+`1.0.0` at revision `b5e3df00ab9ac6e54ef1ff233d676d298209f9c0`.
 
 ### Local Development Override
 
