@@ -33,6 +33,11 @@ the mounted checkout. For `serve mcp` and `serve dev`, it first builds the
 `axoloty-mcp` product from this package and passes its executable path to the
 service runner. This keeps MCP readiness timing separate from SwiftPM
 compilation. An explicit `AXOLOTY_MCP_EXECUTABLE` skips that preparation step.
+
+Without `AXOLOTY_MCP_EXECUTABLE`, `serve mcp` and `serve dev` use
+`/opt/axoloty/bin/axoloty-mcp` when it exists, and otherwise the `axoloty-mcp`
+binary next to the running `axoloty-debug`. The second case covers the prebuilt
+tarballs and the container image, which install the three binaries together.
 The Core repository exposes it through thin wrappers:
 
 ```sh
