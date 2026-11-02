@@ -97,4 +97,60 @@ func sessionConsumesCoreRuntimeDiagnosticsAndRedactsByDefault() async throws {
     #expect(!text.contains(objectID))
     #expect(presence[0].attributes["objectID"] == DiagnosticRedactionPolicy.marker)
     #expect(presence[0].attributes["sourceID"] == DiagnosticRedactionPolicy.marker)
+    // Core attaches non-empty detail to a presence change (see the reveal test
+    // below), so the marker proves redaction rather than an empty field.
+    #expect(presence[0].detail == DiagnosticRedactionPolicy.marker)
+    #expect(presence[1].detail == DiagnosticRedactionPolicy.marker)
+}
+
+/// Free-form detail is redacted by default and when a revealed history is
+/// redacted again, not merely absent.
+///
+/// The default-redaction test above can only show a marker where Core sent
+/// detail. This one opts in to detail, proves Core really sent some, and then
+/// checks that re-redacting the same history (what MCP does before returning an
+/// export) withholds it. `DiagnosticExport` itself does not redact; it records
+/// the policy that was applied to its events.
+@Test @MainActor
+func sessionRedactsCoreDiagnosticDetailUnlessRevealed() async throws {
+    let transport = InjectingTransport()
+    let session = try AxolotyInspectorSession(
+        configuration: InspectorConnectionConfiguration(host: "unused.invalid", port: 1883, namespace: "test")
+    ) { _ in transport }
+    try session.configureDiagnostics(redactionPolicy: DiagnosticRedactionPolicy(revealDetail: true))
+    try await session.connect()
+
+    await transport.deliver(.profile(
+        route: "coaty/3/test/ADV:CoatyObject/0a1b2c3d-4e5f-4061-8293-a4b5c6d7e8f9",
+        payload: Array(#"{"object":{"objectId":"33333333-3333-4333-8333-333333333333","coreType":"CoatyObject","objectType":"com.coaty.test.WireFixture","name":"wire-fixture"}}"#.utf8),
+        nowMS: 1
+    ))
+    var history = await session.diagnosticHistory()
+    for _ in 0..<500 where !history.events.contains(where: { $0.family == .presence && $0.provenance.origin == .runtimeStream }) {
+        try await Task.sleep(for: .milliseconds(10))
+        history = await session.diagnosticHistory()
+    }
+    await session.stop()
+    history = await session.diagnosticHistory()
+
+    let presence = try #require(history.events.first {
+        $0.family == .presence && $0.provenance.origin == .runtimeStream
+    })
+    // Revealed: Core sent real detail.
+    #expect(!presence.detail.isEmpty)
+    #expect(presence.detail != DiagnosticRedactionPolicy.marker)
+
+    // Re-redacting the same history with the default policy withholds it.
+    let defaultExport = try JSONEncoder().encode(DiagnosticExport(history: history.redacted()))
+    let defaultText = String(decoding: defaultExport, as: UTF8.self)
+    #expect(!defaultText.contains(presence.detail))
+    #expect(defaultText.contains(DiagnosticRedactionPolicy.marker))
+    let defaultEvents = try JSONDecoder().decode(DiagnosticExport.self, from: defaultExport).events
+    #expect(defaultEvents.filter { $0.family == .presence }.allSatisfy { $0.detail == DiagnosticRedactionPolicy.marker })
+
+    // Exporting the unredacted history keeps it, so the check above is not vacuous.
+    let revealed = try JSONEncoder().encode(DiagnosticExport(
+        history: history, policy: DiagnosticRedactionPolicy(revealDetail: true)
+    ))
+    #expect(String(decoding: revealed, as: UTF8.self).contains(presence.detail))
 }
