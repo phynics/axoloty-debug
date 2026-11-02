@@ -21,7 +21,7 @@ let coreDependency: Package.Dependency = {
     }
     return .package(
         url: "https://github.com/phynics/axoloty.git",
-        .upToNextMinor(from: "0.10.0")
+        .upToNextMajor(from: "1.0.0")
     )
 }()
 

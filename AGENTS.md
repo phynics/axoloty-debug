@@ -35,7 +35,7 @@ here may read the Axoloty checkout layout, a test manifest, or a package list.
 It reaches a live runtime through the public Axoloty API only.
 
 This package depends on the versioned Core release repository
-(`https://github.com/phynics/axoloty.git`, `0.10.x` from `0.10.0`). For local Core development,
+(`https://github.com/phynics/axoloty.git`, `1.x` from `1.0.0`). For local Core development,
 the environment variable `AXOLOTY_LOCAL_CORE_PATH` (or `AXOLOTY_CORE_PATH`) overrides
 the package dependency to point to a local directory checkout. Core does not link
 this package, and this package must not depend on Core's build harness (`Tools`).
@@ -63,7 +63,7 @@ swift build
 swift test
 ```
 
-By default, Swift Package Manager resolves `Axoloty` from `https://github.com/phynics/axoloty.git` (0.10.x, from `0.10.0`).
+By default, Swift Package Manager resolves `Axoloty` from `https://github.com/phynics/axoloty.git` (1.x, from `1.0.0`).
 To develop against a local Core checkout, set `AXOLOTY_LOCAL_CORE_PATH`:
 
 ```sh
