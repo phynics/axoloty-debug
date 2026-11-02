@@ -298,3 +298,50 @@ func brokerConnectionTimeoutIsApplied() {
 
     #expect(configuration.connectTimeout == .seconds(37))
 }
+
+@MainActor
+@Test("Stdio start serves requests until the transport closes")
+func stdioStartReturnsOnlyAfterTransportCloses() async throws {
+    let mcpServer = AxolotyMCPServer(session: StatusSession(), namespace: "test")
+    let (clientTransport, serverTransport) = await InMemoryTransport.createConnectedPair()
+    let completed = CompletionFlag()
+    let serving = Task { @MainActor in
+        try await mcpServer.startStdio(transport: serverTransport)
+        await completed.set()
+    }
+
+    // Let the server bind its side of the pair before the client sends.
+    try await Task.sleep(for: .milliseconds(500))
+    try await clientTransport.connect()
+    let initialize = Initialize.request(
+        id: 1,
+        .init(
+            protocolVersion: Version.latest,
+            capabilities: .init(),
+            clientInfo: .init(name: "stdio-lifetime-test", version: "1.0")
+        )
+    )
+    try await clientTransport.send(try JSONEncoder().encode(initialize))
+    _ = try await receiveMCPMessage(from: clientTransport)
+
+    // The server answered, so it is running. It must still be serving now:
+    // returning early made `axoloty-mcp --transport stdio` exit with status 0
+    // before the first request.
+    try await Task.sleep(for: .milliseconds(200))
+    #expect(await !completed.value)
+
+    // Closing the client side ends the transport and lets the call return.
+    await clientTransport.disconnect()
+    await serverTransport.disconnect()
+    let deadline = ContinuousClock.now + .seconds(10)
+    while await !completed.value, ContinuousClock.now < deadline {
+        try await Task.sleep(for: .milliseconds(50))
+    }
+    #expect(await completed.value)
+    serving.cancel()
+}
+
+private actor CompletionFlag {
+    private(set) var value = false
+    func set() { value = true }
+}
