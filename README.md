@@ -52,7 +52,10 @@ swift test
 ### Prebuilt Linux binaries
 
 Each `vX.Y.Z` release attaches `axoloty-debug-vX.Y.Z-linux-{x86_64,aarch64}.tar.gz`
-(with a `.sha256` file) containing `axoloty-debug`, `axoloty-inspect`, and `axoloty-mcp`:
+(with a `.sha256` file) containing `axoloty-debug`, `axoloty-inspect`, and `axoloty-mcp`.
+The binaries statically link the Swift standard library but need `libcurl.so.4`
+(Ubuntu/Debian package `libcurl4`) at run time; `axoloty-inspect` and `axoloty-mcp`
+do not start without it:
 
 ```sh
 gh release download vX.Y.Z -R phynics/axoloty-debug -p 'axoloty-debug-*-linux-x86_64.tar.gz*'
