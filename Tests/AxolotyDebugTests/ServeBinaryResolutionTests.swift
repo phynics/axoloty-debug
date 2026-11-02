@@ -104,8 +104,8 @@ struct ServeBinaryResolutionTests {
             if let firstMarker, Date().timeIntervalSince(firstMarker) > 0.7 { break }
             Thread.sleep(forTimeInterval: 0.05)
         }
-        // The supervisor handles SIGINT/SIGTERM by finishing its readiness wait first,
-        // which takes its full deadline; the stand-ins never become ready, so kill it.
+        // The stand-ins never become ready, so the supervisor would otherwise wait out
+        // its readiness deadline; stop it without waiting.
         if process.isRunning { kill(process.processIdentifier, SIGKILL) }
         let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()

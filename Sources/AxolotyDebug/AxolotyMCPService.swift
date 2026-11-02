@@ -111,7 +111,8 @@ public struct AxolotyMCPServiceRunner: Sendable {
             let ready = portProbe.waitForTCP(
                 host: configuration.listenHost,
                 port: configuration.listenPort,
-                timeoutSeconds: readinessTimeout
+                timeoutSeconds: readinessTimeout,
+                shouldAbort: { isInterrupted(signalHandler) }
             )
             if isInterrupted(signalHandler) {
                 return 130

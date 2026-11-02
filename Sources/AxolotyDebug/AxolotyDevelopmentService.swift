@@ -175,7 +175,8 @@ public struct AxolotyDevelopmentServiceRunner: Sendable {
         let mqttReady = portProbe.waitForTCP(
             host: mqttConfig.listenHost,
             port: mqttConfig.port,
-            timeoutSeconds: 5.0
+            timeoutSeconds: 5.0,
+            shouldAbort: { isInterrupted(signalHandler) }
         )
         if isInterrupted(signalHandler) {
             return 130
@@ -210,7 +211,8 @@ public struct AxolotyDevelopmentServiceRunner: Sendable {
         let mcpReady = portProbe.waitForTCP(
             host: mcpConfig.listenHost,
             port: mcpConfig.listenPort,
-            timeoutSeconds: mcpReadinessTimeout
+            timeoutSeconds: mcpReadinessTimeout,
+            shouldAbort: { isInterrupted(signalHandler) }
         )
         if isInterrupted(signalHandler) {
             return 130
