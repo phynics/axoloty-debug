@@ -35,6 +35,20 @@ public enum MCPExecutableLocation {
         return nil
     }
 
+    /// Returns another built product, such as `axoloty-debug`, for this test run.
+    ///
+    /// - Parameter name: The product's executable name.
+    /// - Returns: The executable URL, or `nil` when it was not built.
+    public static func locateProduct(named name: String) -> URL? {
+        for directory in candidateDirectories() {
+            let candidate = directory.appendingPathComponent(name)
+            if FileManager.default.isExecutableFile(atPath: candidate.path) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
     private static func candidateDirectories() -> [URL] {
         guard let executablePath = CommandLine.arguments.first else { return [] }
         var directories: [URL] = []

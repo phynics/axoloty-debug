@@ -68,6 +68,31 @@ public final class AxolotyServeSession: Sendable {
         return Self.launcherMCPExecutable
     }
 
+    /// Rejects an executable override that is not an absolute path.
+    ///
+    /// A bare or relative value would be resolved against the current
+    /// directory, so a planted `axoloty-mcp` or `mosquitto` there would run in
+    /// place of the intended binary. The override documents an executable path,
+    /// not a command name.
+    private func relativeOverrideRejection(for command: AxolotyServeCommand) -> AxolotyServeResult? {
+        let keys: [String]
+        switch command {
+        case .help: keys = []
+        case .mqtt: keys = ["AXOLOTY_MOSQUITTO_EXECUTABLE"]
+        case .mcp: keys = ["AXOLOTY_MCP_EXECUTABLE"]
+        case .development: keys = ["AXOLOTY_MOSQUITTO_EXECUTABLE", "AXOLOTY_MCP_EXECUTABLE"]
+        }
+        for key in keys {
+            if let value = environment[key], !value.hasPrefix("/") {
+                return AxolotyServeResult(
+                    standardError: "error: \(key) must be an absolute path: \(value)\n",
+                    exitCode: 64
+                )
+            }
+        }
+        return nil
+    }
+
     /// Requests termination of the running service.
     public func cancel() {
         cancellation.cancel()
@@ -81,6 +106,7 @@ public final class AxolotyServeSession: Sendable {
         let parser = AxolotyServeParser()
         switch parser.parse(arguments: arguments, environment: environment) {
         case .success(let command):
+            if let rejection = relativeOverrideRejection(for: command) { return rejection }
             switch command {
             case .help(let topic):
                 return AxolotyServeResult(
