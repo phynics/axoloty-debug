@@ -15,6 +15,7 @@ public final class AxolotyServeSession: Sendable {
     private let portProbe: any AxolotyServiceProbing
     private let tempDirProvider: any AxolotyTempDirectoryProvider
     private let installSignalHandler: Bool
+    private let executableDirectory: String?
     private let cancellation = AxolotyDebugCancellation()
 
     /// Creates a serve session.
@@ -27,6 +28,10 @@ public final class AxolotyServeSession: Sendable {
     ///   - portProbe: Service probe used for port availability and readiness.
     ///   - tempDirProvider: Provider creating the temporary Mosquitto configuration directory.
     ///   - installSignalHandler: Whether the service runners install their own Ctrl-C handler.
+    ///   - executableDirectory: Directory holding the running `axoloty-debug` binary. When
+    ///     `AXOLOTY_MCP_EXECUTABLE` is unset and the Core container's launcher path is absent,
+    ///     `axoloty-mcp` is looked up there, which matches the prebuilt tarball and the
+    ///     container image.
     public init(
         executableName: String = "axoloty-tool",
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -34,7 +39,8 @@ public final class AxolotyServeSession: Sendable {
         processRunnerFactory: @escaping @Sendable () -> any AxolotyManagedProcessRunning = { FoundationProcessRunner() },
         portProbe: any AxolotyServiceProbing = FoundationServiceProbe(),
         tempDirProvider: any AxolotyTempDirectoryProvider = FoundationTempDirectoryProvider(),
-        installSignalHandler: Bool = false
+        installSignalHandler: Bool = false,
+        executableDirectory: String? = nil
     ) {
         self.executableName = executableName
         self.environment = environment
@@ -43,6 +49,23 @@ public final class AxolotyServeSession: Sendable {
         self.portProbe = portProbe
         self.tempDirProvider = tempDirProvider
         self.installSignalHandler = installSignalHandler
+        self.executableDirectory = executableDirectory
+    }
+
+    /// Core container launcher path for `axoloty-mcp`.
+    private static let launcherMCPExecutable = "/opt/axoloty/bin/axoloty-mcp"
+
+    /// Resolves the `axoloty-mcp` binary: explicit environment value, then the Core
+    /// container launcher path, then a sibling of this executable, then the launcher
+    /// path again so a missing binary is reported against the documented location.
+    private func mcpExecutable() -> String {
+        if let explicit = environment["AXOLOTY_MCP_EXECUTABLE"] { return explicit }
+        if fileSystem.exists(atPath: Self.launcherMCPExecutable) { return Self.launcherMCPExecutable }
+        if let executableDirectory {
+            let sibling = executableDirectory + "/axoloty-mcp"
+            if fileSystem.exists(atPath: sibling) { return sibling }
+        }
+        return Self.launcherMCPExecutable
     }
 
     /// Requests termination of the running service.
@@ -79,7 +102,7 @@ public final class AxolotyServeSession: Sendable {
                     processRunner: processRunnerFactory(),
                     portProbe: portProbe,
                     fileSystem: fileSystem,
-                    mcpExecutable: environment["AXOLOTY_MCP_EXECUTABLE"] ?? "/opt/axoloty/bin/axoloty-mcp",
+                    mcpExecutable: mcpExecutable(),
                     installSignalHandler: installSignalHandler,
                     cancellation: cancellation
                 )
@@ -91,7 +114,7 @@ public final class AxolotyServeSession: Sendable {
                     fileSystem: fileSystem,
                     tempDirProvider: tempDirProvider,
                     mosquittoExecutable: environment["AXOLOTY_MOSQUITTO_EXECUTABLE"] ?? "/usr/sbin/mosquitto",
-                    mcpExecutable: environment["AXOLOTY_MCP_EXECUTABLE"] ?? "/opt/axoloty/bin/axoloty-mcp",
+                    mcpExecutable: mcpExecutable(),
                     installSignalHandler: installSignalHandler,
                     cancellation: cancellation
                 )

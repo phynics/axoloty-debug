@@ -764,3 +764,56 @@ func devServiceEndToEndWithDynamicPorts() throws {
     #expect(!mqttRunner.isRunning)
     #expect(!mcpRunner.isRunning)
 }
+
+// MARK: - axoloty-mcp resolution
+
+@Test
+func serveMCPFindsSiblingExecutableWhenLauncherPathIsAbsent() {
+    let mcpRunner = DevFakeProcessRunner()
+    mcpRunner.exitCode = 0
+    mcpRunner.pollsUntilExit = 1
+
+    let session = AxolotyServeSession(
+        environment: [:],
+        fileSystem: StubFileSystem(paths: ["/usr/local/bin/axoloty-mcp"]),
+        processRunnerFactory: devFakeFactory([mcpRunner]),
+        portProbe: DevPortProbe(readyPorts: [8765]),
+        tempDirProvider: DevTempDirProvider(),
+        executableDirectory: "/usr/local/bin"
+    )
+
+    let result = session.run(arguments: ["mcp", "--transport", "http"])
+    #expect(result.exitCode == 0)
+    #expect(mcpRunner.startSpec?.executable == "/usr/local/bin/axoloty-mcp")
+}
+
+@Test
+func serveMCPPrefersExplicitThenLauncherPathOverSibling() {
+    let explicitRunner = DevFakeProcessRunner()
+    explicitRunner.exitCode = 0
+    explicitRunner.pollsUntilExit = 1
+    let explicit = AxolotyServeSession(
+        environment: ["AXOLOTY_MCP_EXECUTABLE": "/custom/axoloty-mcp"],
+        fileSystem: StubFileSystem(paths: ["/custom/axoloty-mcp", "/opt/axoloty/bin/axoloty-mcp", "/usr/local/bin/axoloty-mcp"]),
+        processRunnerFactory: devFakeFactory([explicitRunner]),
+        portProbe: DevPortProbe(readyPorts: [8765]),
+        tempDirProvider: DevTempDirProvider(),
+        executableDirectory: "/usr/local/bin"
+    )
+    _ = explicit.run(arguments: ["mcp", "--transport", "http"])
+    #expect(explicitRunner.startSpec?.executable == "/custom/axoloty-mcp")
+
+    let launcherRunner = DevFakeProcessRunner()
+    launcherRunner.exitCode = 0
+    launcherRunner.pollsUntilExit = 1
+    let launcher = AxolotyServeSession(
+        environment: [:],
+        fileSystem: StubFileSystem(paths: ["/opt/axoloty/bin/axoloty-mcp", "/usr/local/bin/axoloty-mcp"]),
+        processRunnerFactory: devFakeFactory([launcherRunner]),
+        portProbe: DevPortProbe(readyPorts: [8765]),
+        tempDirProvider: DevTempDirProvider(),
+        executableDirectory: "/usr/local/bin"
+    )
+    _ = launcher.run(arguments: ["mcp", "--transport", "http"])
+    #expect(launcherRunner.startSpec?.executable == "/opt/axoloty/bin/axoloty-mcp")
+}
