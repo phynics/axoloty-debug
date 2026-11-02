@@ -817,3 +817,43 @@ func serveMCPPrefersExplicitThenLauncherPathOverSibling() {
     _ = launcher.run(arguments: ["mcp", "--transport", "http"])
     #expect(launcherRunner.startSpec?.executable == "/opt/axoloty/bin/axoloty-mcp")
 }
+
+// MARK: - Executable overrides
+
+@Test
+func serveRejectsRelativeExecutableOverrides() {
+    for (key, arguments) in [
+        ("AXOLOTY_MCP_EXECUTABLE", ["mcp", "--transport", "http"]),
+        ("AXOLOTY_MCP_EXECUTABLE", ["dev"]),
+        ("AXOLOTY_MOSQUITTO_EXECUTABLE", ["mqtt"]),
+        ("AXOLOTY_MOSQUITTO_EXECUTABLE", ["dev"]),
+    ] {
+        for value in ["axoloty-mcp", "./axoloty-mcp", "../bin/mosquitto", ""] {
+            let session = AxolotyServeSession(
+                environment: [key: value],
+                fileSystem: StubFileSystem(paths: [value, "/usr/sbin/mosquitto", "/opt/axoloty/bin/axoloty-mcp"]),
+                processRunnerFactory: devFakeFactory([DevFakeProcessRunner(), DevFakeProcessRunner()]),
+                portProbe: DevPortProbe(readyPorts: [1883, 8765]),
+                tempDirProvider: DevTempDirProvider()
+            )
+            let result = session.run(arguments: arguments)
+            #expect(result.exitCode == 64, "\(key)=\(value) \(arguments)")
+            #expect(result.standardError == "error: \(key) must be an absolute path: \(value)\n")
+        }
+    }
+}
+
+@Test
+func serveIgnoresRelativeOverrideForOtherServices() {
+    let mqttRunner = DevFakeProcessRunner()
+    mqttRunner.exitCode = 0
+    mqttRunner.pollsUntilExit = 1
+    let session = AxolotyServeSession(
+        environment: ["AXOLOTY_MCP_EXECUTABLE": "axoloty-mcp"],
+        fileSystem: StubFileSystem(paths: ["/usr/sbin/mosquitto"]),
+        processRunnerFactory: devFakeFactory([mqttRunner]),
+        portProbe: DevPortProbe(readyPorts: [1883]),
+        tempDirProvider: DevTempDirProvider()
+    )
+    #expect(session.run(arguments: ["mqtt"]).exitCode != 64)
+}

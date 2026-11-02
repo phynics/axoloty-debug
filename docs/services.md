@@ -38,6 +38,12 @@ Without `AXOLOTY_MCP_EXECUTABLE`, `serve mcp` and `serve dev` use
 `/opt/axoloty/bin/axoloty-mcp` when it exists, and otherwise the `axoloty-mcp`
 binary next to the running `axoloty-debug`. The second case covers the prebuilt
 tarballs and the container image, which install the three binaries together.
+
+`AXOLOTY_MCP_EXECUTABLE` and `AXOLOTY_MOSQUITTO_EXECUTABLE` must be absolute
+paths. A bare or relative value is rejected with status 64, because it would
+otherwise resolve against the current directory and run whatever is planted
+there. The sibling lookup uses the real location of the running
+`axoloty-debug` (symlinks resolved), never the current directory or `PATH`.
 The Core repository exposes it through thin wrappers:
 
 ```sh
