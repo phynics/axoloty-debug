@@ -23,6 +23,8 @@ jobs:
             echo "tag $GITHUB_REF_NAME does not match VERSION $version" >&2
             exit 1
           fi
+      - name: Verify the compiled-in version derives from VERSION
+        run: sh scripts/stamp-version.sh check
 
   build:
     name: Build linux-${{ matrix.arch }}
@@ -39,12 +41,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Stamp the release version
+        run: sh scripts/stamp-version.sh release
       - name: Build release products
         run: swift build -c release --static-swift-stdlib
       - name: Package binaries
         run: |
           name="axoloty-debug-${GITHUB_REF_NAME}-linux-${{ matrix.arch }}"
           bin=$(swift build -c release --show-bin-path)
+          version=$(tr -d '[:space:]' < VERSION)
+          reported=$("$bin/axoloty-inspect" --version)
+          if [ "$reported" != "axoloty-inspect $version" ]; then
+            echo "binary reports '$reported', expected 'axoloty-inspect $version'" >&2
+            exit 1
+          fi
           mkdir -p "dist/$name"
           cp "$bin/axoloty-debug" "$bin/axoloty-inspect" "$bin/axoloty-mcp" "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
