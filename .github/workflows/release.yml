@@ -50,11 +50,13 @@ jobs:
           name="axoloty-debug-${GITHUB_REF_NAME}-linux-${{ matrix.arch }}"
           bin=$(swift build -c release --show-bin-path)
           version=$(tr -d '[:space:]' < VERSION)
-          reported=$("$bin/axoloty-inspect" --version)
-          if [ "$reported" != "axoloty-inspect $version" ]; then
-            echo "binary reports '$reported', expected 'axoloty-inspect $version'" >&2
-            exit 1
-          fi
+          for binary in axoloty-debug axoloty-inspect axoloty-mcp; do
+            reported=$("$bin/$binary" --version < /dev/null)
+            if [ "$reported" != "$binary $version" ]; then
+              echo "$binary reports '$reported', expected '$binary $version'" >&2
+              exit 1
+            fi
+          done
           mkdir -p "dist/$name"
           cp "$bin/axoloty-debug" "$bin/axoloty-inspect" "$bin/axoloty-mcp" "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"

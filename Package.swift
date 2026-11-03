@@ -59,7 +59,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "AxolotyDebugCLI",
-            dependencies: ["AxolotyDebug"],
+            dependencies: ["AxolotyDebug", "AxolotyVersion"],
             path: "Sources/axoloty-debug"
         ),
         .target(
@@ -87,6 +87,7 @@ let package = Package(
                 .product(name: "AxolotyMQTT", package: "Axoloty"),
                 "AxolotyInspectorCore",
                 "AxolotyInspectorRuntime",
+                "AxolotyVersion",
             ],
             path: "Sources/axoloty-inspect"
         ),
@@ -113,6 +114,7 @@ let package = Package(
                 .product(name: "AxolotyMQTT", package: "Axoloty"),
                 "AxolotyDebug",
                 "AxolotyMCP",
+                "AxolotyVersion",
                 "AxolotyInspectorCore",
                 "AxolotyInspectorRuntime",
             ],
@@ -124,7 +126,7 @@ let package = Package(
         ),
         .testTarget(
             name: "AxolotyDebugTests",
-            dependencies: ["AxolotyDebug", "AxolotyDebugTestSupport"],
+            dependencies: ["AxolotyDebug", "AxolotyDebugTestSupport", "AxolotyVersion"],
             path: "Tests/AxolotyDebugTests"
         ),
         .testTarget(

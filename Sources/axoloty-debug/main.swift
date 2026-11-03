@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Atakan DULKER. Licensed under the MIT License.
 
 import AxolotyDebug
+import AxolotyVersion
 import Foundation
 
 let arguments = Array(CommandLine.arguments.dropFirst())
@@ -14,6 +15,7 @@ Commands:
   serve mqtt [options]   Start a local Mosquitto broker.
   serve mcp [options]    Start an Axoloty MCP server (stdio or HTTP).
   serve dev [options]    Start MQTT and MCP as a supervised development stack.
+  --version, -v          Show the axoloty-debug version.
   help, --help, -h       Show this help.
 
 Run `axoloty-debug serve <subcommand> --help` for subcommand options.
@@ -21,6 +23,11 @@ Run `axoloty-debug serve <subcommand> --help` for subcommand options.
 
 if arguments.isEmpty || arguments.first == "help" || arguments.first == "--help" || arguments.first == "-h" {
     print(helpText)
+    Foundation.exit(0)
+}
+
+if arguments.first == "--version" || arguments.first == "-v" {
+    print(AxolotyVersion.versionLine(executableName: "axoloty-debug"))
     Foundation.exit(0)
 }
 

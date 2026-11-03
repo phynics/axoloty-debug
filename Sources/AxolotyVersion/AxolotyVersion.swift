@@ -24,6 +24,23 @@ public enum AxolotyVersion {
         !compiledVersion.hasSuffix(developmentSuffix)
     }
 
+    /// Returns the line a `--version` flag prints: the executable name and the
+    /// version, separated by a space, with no trailing newline.
+    ///
+    /// Every first-party executable prints this one format so an operator can
+    /// compare them directly.
+    ///
+    /// - Parameters:
+    ///   - executableName: The executable's name, such as `axoloty-debug`.
+    ///   - environment: Process environment passed to ``current(environment:)``.
+    /// - Returns: The line to print, such as `axoloty-debug 0.1.0-dev`.
+    public static func versionLine(
+        executableName: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String {
+        "\(executableName) \(current(environment: environment))"
+    }
+
     /// Returns an explicit process value or the compiled-in ``compiledVersion``.
     ///
     /// - Parameter environment: Process environment; a non-empty
