@@ -3,6 +3,7 @@
 import Axoloty
 import AxolotyInspectorCore
 import AxolotyInspectorRuntime
+import AxolotyVersion
 import Foundation
 
 let environment = InspectorEnvironmentValues(environment: ProcessInfo.processInfo.environment)
@@ -16,7 +17,7 @@ case .help:
     print(InspectorArgumentParser.helpText)
     Foundation.exit(0)
 case .version:
-    print("axoloty-inspect \(InspectorArgumentParser.version)")
+    print(AxolotyVersion.versionLine(executableName: "axoloty-inspect"))
     Foundation.exit(0)
 case let .error(error):
     FileHandle.standardError.write(Data("error: \(error.userFriendlyMessage)\n".utf8))

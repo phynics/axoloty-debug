@@ -3,6 +3,7 @@
 import AxolotyMCP
 import AxolotyInspectorCore
 import AxolotyDebug
+import AxolotyVersion
 import Foundation
 
 #if canImport(Glibc)
@@ -34,11 +35,20 @@ Options:
   --access-token-file PATH
                           Require this bearer token on every HTTP request.
                           Required for a non-loopback --listen-host.
+  --version, -v           Show the axoloty-mcp version.
   --help                  Show this help.
 """
 
 if args.contains("--help") || args.contains("-h") {
     print(helpText)
+    Foundation.exit(0)
+}
+
+// Handled before any argument validation, environment read, or server start:
+// stdout is the MCP channel under the stdio transport, and `--version` must
+// never open it.
+if args.contains("--version") || args.contains("-v") {
+    print(AxolotyVersion.versionLine(executableName: "axoloty-mcp"))
     Foundation.exit(0)
 }
 

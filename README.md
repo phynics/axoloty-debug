@@ -62,6 +62,10 @@ gh release download vX.Y.Z -R phynics/axoloty-debug -p 'axoloty-debug-*-linux-x8
 sha256sum -c axoloty-debug-vX.Y.Z-linux-x86_64.tar.gz.sha256
 ```
 
+Each binary reports its version with `--version` (or `-v`), for example
+`axoloty-mcp --version` prints `axoloty-mcp X.Y.Z`. Builds that did not come from
+the release workflow report `X.Y.Z-dev`.
+
 ### Container image
 
 Releases also publish `ghcr.io/phynics/axoloty-debug:<version>` (linux/amd64 and
