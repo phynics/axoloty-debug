@@ -182,6 +182,32 @@ public protocol AxolotyServiceProbing: Sendable {
     func isPortAvailable(host: String, port: UInt16) -> Bool
     /// Polls a TCP endpoint until it accepts connections or the deadline passes.
     func waitForTCP(host: String, port: UInt16, timeoutSeconds: Double) -> Bool
+    /// Polls a TCP endpoint until it accepts connections, the deadline passes, or the caller aborts.
+    ///
+    /// - Parameters:
+    ///   - host: The host to connect to.
+    ///   - port: The port to connect to.
+    ///   - timeoutSeconds: The longest the wait may last.
+    ///   - shouldAbort: Polled between connection attempts; returning `true` ends the wait
+    ///     early. A probe that cannot observe it falls back to the uninterruptible wait.
+    /// - Returns: `true` only when the endpoint accepted a connection.
+    func waitForTCP(
+        host: String,
+        port: UInt16,
+        timeoutSeconds: Double,
+        shouldAbort: @Sendable () -> Bool
+    ) -> Bool
+}
+
+extension AxolotyServiceProbing {
+    public func waitForTCP(
+        host: String,
+        port: UInt16,
+        timeoutSeconds: Double,
+        shouldAbort: @Sendable () -> Bool
+    ) -> Bool {
+        waitForTCP(host: host, port: port, timeoutSeconds: timeoutSeconds)
+    }
 }
 
 // MARK: - Foundation implementations
@@ -281,9 +307,18 @@ public struct FoundationServiceProbe: AxolotyServiceProbing {
     }
 
     public func waitForTCP(host: String, port: UInt16, timeoutSeconds: Double) -> Bool {
+        waitForTCP(host: host, port: port, timeoutSeconds: timeoutSeconds, shouldAbort: { false })
+    }
+
+    public func waitForTCP(
+        host: String,
+        port: UInt16,
+        timeoutSeconds: Double,
+        shouldAbort: @Sendable () -> Bool
+    ) -> Bool {
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         return withResolvedAddresses(host: host, port: port) { info in
-            while Date() < deadline {
+            while Date() < deadline, !shouldAbort() {
                 var current: UnsafeMutablePointer<addrinfo>? = info
                 while let address = current {
                     let fd = socket(address.pointee.ai_family, address.pointee.ai_socktype, address.pointee.ai_protocol)
